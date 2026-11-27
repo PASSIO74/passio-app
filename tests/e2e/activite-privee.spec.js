@@ -17,7 +17,16 @@
 //   ⑤ la publication au fil refuse une activité privée, même pas notée hors fil ;
 //   ⑥ `_eventRow` n'envoie la visibilité que si elle est connue, et elle n'est
 //      JAMAIS une colonne « optionnelle » qu'un refus retirerait ;
-//   ⑦ la fiche d'une activité privée le dit (« 🔒 Activité privée »).
+//   ⑦ la fiche d'une activité privée le dit (« 🔒 Activité privée ») ;
+//   ⑧ une série RÉCURRENTE privée ouvre TOUTES ses dates à l'invité ;
+//   ⑨ l'organisation voit la liste des invités (lue en base) et en RETIRE un ;
+//   ⑩ « Copier le lien d'invitation privé » porte le code (`#ic-<id>.<code>`),
+//      « Renouveler » le demande neuf ;
+//   ⑪ un lien `#ic-` ouvert : le code quitte l'adresse, l'invitation est
+//      rejointe puis l'activité ouverte ; refusée → dit, oubliée ; réseau → gardée ;
+//      sans compte → gardée et reprise à la connexion ;
+//   ⑫ un invité ne voit pas « Invités » ; la carte de Rencontrer et la carte
+//      de conversation disent « Privée ».
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -183,5 +192,171 @@ test.describe("Activité privée, sur invitation", () => {
       openEventDetails("ev_ap_fiche");
     });
     await expect(page.locator(".ev-badge-privee")).toContainText("Activité privée");
+  });
+
+  test("⑧ série récurrente privée : l'invité est ouvert à TOUTES les dates", async ({ page }) => {
+    await banc(page);
+    await ouvrirConvEtProposer(page);
+    await page.evaluate(() => {
+      const sel = document.getElementById("evRecurrence");
+      sel.value = "weekly"; sel.dispatchEvent(new Event("change"));
+      document.getElementById("evOccurrences").value = "3";
+    });
+    await remplir(page);
+    await page.evaluate(() => submitEvent());
+    await expect.poll(() => page.evaluate(() => window.__journal.includes("carte"))).toBe(true);
+    await expect.poll(() => page.evaluate(() => new Set(window.__invites.map((i) => i.evId)).size)).toBe(3);
+    const r = await page.evaluate(() => ({
+      ids: state.userEvents.map((e) => e.id).sort(),
+      invites: window.__invites.map((i) => i.evId).sort(),
+      privees: state.userEvents.every((e) => e.visibilite === "privee"),
+    }));
+    expect(r.ids.length).toBe(3);
+    expect(r.privees).toBe(true);
+    expect([...new Set(r.invites)].sort()).toEqual(r.ids);
+  });
+
+  test("⑧ bis une date de la série refusée ne fait pas tomber l'invitation", async ({ page }) => {
+    await banc(page);
+    await page.evaluate(() => {
+      window.supaInviterActivite = async (evId, ids) => {
+        window.__journal.push("invite"); window.__invites.push({ evId, ids });
+        return evId === state.userEvents[state.userEvents.length - 1].id;   // seule la date principale passe
+      };
+    });
+    await ouvrirConvEtProposer(page);
+    await page.evaluate(() => {
+      const sel = document.getElementById("evRecurrence");
+      sel.value = "weekly"; sel.dispatchEvent(new Event("change"));
+      document.getElementById("evOccurrences").value = "3";
+    });
+    await remplir(page);
+    await page.evaluate(() => submitEvent());
+    await expect.poll(() => page.evaluate(() => window.__journal.includes("carte"))).toBe(true);
+    await expect.poll(() => page.evaluate(() => window.__journal.includes("notif:event_invite"))).toBe(true);
+  });
+
+  // Une activité privée de MON organisation, en local.
+  async function activitePrivee(page, mienne) {
+    await page.evaluate((m) => {
+      window._compteAuthReel = () => true;
+      // L'activité d'un AUTRE vit avec celles du serveur (`seed.events`) : tout
+      // `userEvents` est « à moi » (`allEvents` le marque `_mine`).
+      const liste = [{
+        id: "ev_ap_g", title: "Dîner privé", passion: "musique", emoji: "🎵",
+        date: Date.now() + 864e5, time: "20:00", city: "Annecy", visibilite: "privee",
+        attendees: m ? [MY_UID, "7a1f0c3e-5b2d-4e8f-9a6b-1c2d3e4f5a6b"] : ["u_autre"], maybes: [], waitlist: [], checkedIn: [],
+        organizerId: m ? MY_UID : "u_autre", authorId: m ? MY_UID : "u_autre",
+      }];
+      if (m) state.userEvents = liste;
+      else { state.userEvents = []; state.seed.events = liste; }
+    }, mienne);
+  }
+
+  test("⑨ l'organisation lit ses invités et en retire un", async ({ page }) => {
+    await banc(page);
+    await activitePrivee(page, true);
+    await page.evaluate((nina) => {
+      window.__retraits = [];
+      window.supaLireInvitesActivite = async () => [nina];
+      window.supaRetirerInviteActivite = async (ev, u) => { window.__retraits.push([ev, u]); return true; };
+      openEventInvite("ev_ap_g");
+    }, NINA);
+    const ligne = page.locator(`[data-invite-prive="${NINA}"]`);
+    await expect(ligne).toContainText("Nina Costa");
+    await ligne.getByRole("button", { name: /Retirer/ }).click();
+    await expect(ligne).toHaveCount(0);
+    const r = await page.evaluate(() => ({ retraits: window.__retraits, att: state.userEvents[0].attendees }));
+    expect(r.retraits).toEqual([["ev_ap_g", NINA]]);
+    expect(r.att).not.toContain(NINA);
+  });
+
+  test("⑨ bis un retrait refusé par la base laisse la personne et le dit", async ({ page }) => {
+    await banc(page);
+    await activitePrivee(page, true);
+    await page.evaluate((nina) => {
+      window.supaLireInvitesActivite = async () => [nina];
+      window.supaRetirerInviteActivite = async () => false;
+      openEventInvite("ev_ap_g");
+    }, NINA);
+    const ligne = page.locator(`[data-invite-prive="${NINA}"]`);
+    await ligne.getByRole("button", { name: /Retirer/ }).click();
+    await page.waitForTimeout(300);
+    await expect(ligne).toHaveCount(1);
+    expect(await page.evaluate(() => state.userEvents[0].attendees.length)).toBe(2);
+  });
+
+  test("⑩ le lien d'invitation privé porte le code ; renouveler le redemande", async ({ page }) => {
+    await banc(page);
+    await activitePrivee(page, true);
+    const CODE = "ab".repeat(32);
+    await page.evaluate((code) => {
+      window.__codes = []; window.__partages = [];
+      window.supaLireInvitesActivite = async () => [];
+      window.supaCodeInvitationActivite = async (ev, ren) => { window.__codes.push([ev, ren]); return code; };
+      window.partagerOuCopier = (d) => { window.__partages.push(d.url); };
+      openEventInvite("ev_ap_g");
+    }, CODE);
+    await page.getByRole("button", { name: /Copier le lien d'invitation privé/ }).click();
+    await expect.poll(() => page.evaluate(() => window.__partages.length)).toBe(1);
+    await page.getByRole("button", { name: /Renouveler le lien/ }).click();
+    await expect.poll(() => page.evaluate(() => window.__partages.length)).toBe(2);
+    const r = await page.evaluate(() => ({ codes: window.__codes, url: window.__partages[0] }));
+    expect(r.codes).toEqual([["ev_ap_g", false], ["ev_ap_g", true]]);
+    expect(r.url).toMatch(new RegExp("#ic-ev_ap_g\\." + CODE + "$"));
+    // Une activité PUBLIQUE garde le lien public d'avant.
+    await page.evaluate(() => { state.userEvents[0].visibilite = "publique"; closeModal(); openEventInvite("ev_ap_g"); });
+    await expect(page.getByRole("button", { name: /Envoyer le lien à quelqu'un d'autre/ })).toBeVisible();
+  });
+
+  test("⑪ un lien #ic- : rejoint, ouvert, code retiré de l'adresse ; refusé / réseau / sans compte", async ({ page }) => {
+    await banc(page);
+    const CODE = "cd".repeat(32);
+    await page.evaluate(() => {
+      window.__rejoints = []; window.__verdict = true; window.__ouvertes = [];
+      window._compteAuthReel = () => true;
+      window.supaRejoindreParCode = async (ev, c) => { window.__rejoints.push([ev, c]); return window.__verdict; };
+      window._ouvrirActiviteDepuisNotification = (id) => { window.__ouvertes.push(id); return true; };
+    });
+    const ouvrir = (h) => page.evaluate((x) => { location.hash = x; }, h);
+    await ouvrir("#ic-ev_x." + CODE);
+    await expect.poll(() => page.evaluate(() => window.__ouvertes)).toEqual(["ev_x"]);
+    let r = await page.evaluate(() => ({ h: location.hash, j: window.__rejoints, k: localStorage.getItem("passio_invitation_activite_v1") }));
+    expect(r.h).toBe("");
+    expect(r.j).toEqual([["ev_x", CODE]]);
+    expect(r.k, "rejoint : le lien est oublié").toBeNull();
+
+    await page.evaluate(() => { window.__verdict = false; });
+    await ouvrir("#ic-ev_y." + CODE);
+    await expect.poll(() => page.evaluate(() => window.__rejoints.length)).toBe(2);
+    r = await page.evaluate(() => ({ o: window.__ouvertes, k: localStorage.getItem("passio_invitation_activite_v1") }));
+    expect(r.o).toEqual(["ev_x"]);
+    expect(r.k, "refusé : oublié").toBeNull();
+
+    await page.evaluate(() => { window.__verdict = null; });
+    await ouvrir("#ic-ev_z." + CODE);
+    await expect.poll(() => page.evaluate(() => window.__rejoints.length)).toBe(3);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("passio_invitation_activite_v1")).id), "réseau : gardé").toBe("ev_z");
+
+    // Sans compte : gardé, rien n'est appelé ; repris dès que le compte existe.
+    await page.evaluate(() => { localStorage.removeItem("passio_invitation_activite_v1"); window._compteAuthReel = () => false; window.__verdict = true; });
+    await ouvrir("#ic-ev_w." + CODE);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.__rejoints.length)).toBe(3);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("passio_invitation_activite_v1")).id)).toBe("ev_w");
+    await page.evaluate(() => { window._compteAuthReel = () => true; reprendreInvitationActivite(); });
+    await expect.poll(() => page.evaluate(() => window.__ouvertes)).toEqual(["ev_x", "ev_w"]);
+  });
+
+  test("⑫ l'invité ne gère pas les invités ; les cartes disent « Privée »", async ({ page }) => {
+    await banc(page);
+    await activitePrivee(page, false);
+    await page.evaluate(() => openEventDetails("ev_ap_g"));
+    await expect(page.locator(".ev-badge-privee")).toBeVisible();
+    await expect(page.locator('#eventDetailPage button[onclick^="openEventInvite"]')).toHaveCount(0);
+    const carte = await page.evaluate(() => carteActiviteMessage(lienPartageDe("event", "ev_ap_g"), { id: "c", userId: "u_autre" }, false));
+    expect(carte).toContain("Invitation privée");
+    await page.evaluate(() => { document.getElementById("eventDetailPage").style.display = "none"; goTo("irl"); renderIRL(); });
+    await expect.poll(() => page.locator(".ev-tag-privee").count()).toBeGreaterThan(0);
   });
 });

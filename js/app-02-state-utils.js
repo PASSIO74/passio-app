@@ -9092,7 +9092,10 @@ function onbFinish() {
         && typeof supa !== "undefined" && supa && supa.auth && typeof supa.auth.getSession === "function") {
       supa.auth.getSession().then(function (r) {
         var s = r && r.data && r.data.session;
-        if (s) return appliquerInvitation(s);
+        if (s) {
+          try { if (typeof reprendreInvitationActivite === "function") setTimeout(reprendreInvitationActivite, 0); } catch (e) {}
+          return appliquerInvitation(s);
+        }
       }).catch(function (e) { diagLog("invitation_onboarding", e && e.message); });
     }
   } catch (e) {}

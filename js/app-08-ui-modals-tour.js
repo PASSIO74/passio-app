@@ -699,6 +699,8 @@ function buildStoryGroups() {
   // sur le groupe pour que renderStories/le viewer n'aient pas à recalculer.
   const seen = (state.user && state.user.seenStories) || [];
   groups.forEach(g => { g.allSeen = g.stories.every(s => seen.includes(s.id)); });
+  // Anneau VERT (Instagram) : une story « Amis proches » pas encore vue dans le groupe.
+  groups.forEach(g => { g.proches = g.stories.some(s => s && s.audience === "proches" && !seen.includes(s.id)); });
   return groups.filter(g => !g.allSeen).concat(groups.filter(g => g.allSeen));
 }
 
@@ -747,7 +749,7 @@ function renderStories() {
     const allSeen = !!myGroup.allSeen;
     html = `
       <div class="story-item" onclick="openStoryGroup('${escapeJsArg(escapeHtml(String(myGroup.authorId)))}')" title="Voir ta story">
-        <div class="story-ring ${allSeen ? "seen" : ""}">
+        <div class="story-ring ${allSeen ? "seen" : ""}${myGroup.proches ? " proches" : ""}">
           <div class="story-inner" style="background:${myColor};">${myAvatarHtml}</div>
         </div>
         <button class="story-add-badge" onclick="event.stopPropagation();meOpen('story')" aria-label="Ajouter une story">+</button>
@@ -780,7 +782,7 @@ function renderStories() {
     const allSeen = !!g.allSeen;
     return `
       <div class="story-item" onclick="openStoryGroup('${escapeJsArg(g.authorId)}')">
-        <div class="story-ring ${allSeen ? "seen" : ""}">
+        <div class="story-ring ${allSeen ? "seen" : ""}${g.proches ? " proches" : ""}">
           <div class="story-inner" style="background: ${_cssColor(g.color)};">${_storyBubbleInner(g)}</div>
         </div>
         <div class="story-label">${escapeHtml(g.name.split(" ")[0])}</div>
@@ -890,7 +892,7 @@ async function _publierStoryAvecVerdict(story) {
   if (local) { toast("Story enregistrée sur cet appareil", "success"); return true; }
   let ok = false;
   try { ok = await supaPublishStory(story); } catch (e) { ok = false; }
-  if (ok) { toast("Story publiée", "success"); return true; }
+  if (ok) { toast(story.audience === "proches" ? "Story publiée pour tes amis proches" : "Story publiée", "success"); return true; }
   state.seed.stories = (state.seed.stories || []).filter(function (s) { return s.id !== story.id; });
   saveState();
   try { renderStories(); } catch (e) {}
@@ -964,6 +966,7 @@ function meOpen(mode) {
   var title = document.getElementById("meTitle"); if (title) title.textContent = isBob ? "Bobine" : "Story";
   document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
   try { peindreLigneAudience(document.getElementById("mePublishBtn"), isBob ? "bobine" : "story"); } catch (e) {}
+  try { _mePeindreBoutonProches(); } catch (e) {}
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   meFermerDessin();
   ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam", "me-fond", "me-texte-ouvert", "me-dessin", "me-filtres-ouverts");
@@ -987,6 +990,8 @@ function meClose() {
   const _meEtaitOuvert = !!(ed && ed.classList.contains("open"));
   _meTeReinitialiser();
   meFermerDessin();
+  _meMusiqueArreter();
+  var _pst = document.getElementById("meStickerPanel"); if (_pst) _pst.remove();
   _meMontageDemonter();
   meState.source = null; meState.montage = null;
   if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on", "me-fond", "me-texte-ouvert", "me-filtres-ouverts", "me-video", "me-montage"); ed.setAttribute("aria-hidden", "true"); }
@@ -1011,6 +1016,7 @@ function meBackToCapture() {
   meState.media = null; meState.mediaType = null; meState.overlays = []; meState.dessin = []; meState._seq = 0;
   meState.source = null; meState.montage = null;
   ed.classList.remove("me-video");
+  _meMusiqueArreter();
   meFermerDessin(); _meDessinRendre();
   _meRemoveVideoControls();
   _meRevokePreviewUrl();
@@ -2277,6 +2283,253 @@ function meFermerEditeurTexte(valider) {
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", brancher); else brancher();
 })();
+// ── MUSIQUE (2026-11-26) ─────────────────────────────────────────────────────
+// Gratuite et LÉGALE : morceaux sous licence libre trouvés par Openverse (moteur
+// de la fondation WordPress, API gratuite sans clé). Seules les licences qui
+// autorisent l'usage commercial ET l'adaptation (poser une musique sur une image
+// est une adaptation) : CC BY, CC0, domaine public — jamais « ND » ni « SA ».
+// Le crédit (titre, artiste, licence) s'ouvre d'un toucher sur le sticker.
+// ⚠️ L'adresse du son vient d'un AUTRE compte côté lecteur : https et hébergeurs
+// d'Openverse seulement (`musiqueSourceSure`), sinon une story piégée ferait
+// charger un son depuis n'importe quel serveur (adresse IP du spectateur).
+var OPENVERSE_AUDIO = "https://api.openverse.org/v1/audio/";
+// BY-SA écartée (relecture du 2026-11-26) : synchronisée avec une image animée, la
+// musique fait de la story une adaptation qui devrait alors être publiée en BY-SA.
+var MUSIQUE_LICENCES = ["by", "cc0", "pdm"];
+var MUSIQUE_HOTES = /^(?:[a-z0-9-]+\.)*(?:jamendo\.com|freesound\.org|wikimedia\.org|ccmixter\.org)$/i;
+var MUSIQUE_SUGGESTIONS = ["chill", "acoustic", "piano", "lofi", "electronic", "jazz", "rock", "ambient"];
+function musiqueSourceSure(url) {
+  try {
+    var u = new URL(String(url || ""));
+    if (u.protocol !== "https:" || u.username || u.password || u.port) return "";
+    return MUSIQUE_HOTES.test(u.hostname) ? u.href : "";
+  } catch (e) { return ""; }
+}
+function _musiqueLicenceUrlSure(url) {
+  try { var u = new URL(String(url || "")); return (u.protocol === "https:" && /(^|\.)creativecommons\.org$/i.test(u.hostname)) ? u.href : ""; } catch (e) { return ""; }
+}
+function _musiqueLibelleLicence(l, v) {
+  l = String(l || "").toLowerCase();
+  if (l === "cc0") return "CC0";
+  if (l === "pdm") return "Domaine public";
+  if (MUSIQUE_LICENCES.indexOf(l) < 0) return "";
+  return "CC " + l.toUpperCase() + (v ? " " + String(v).replace(/[^0-9.]/g, "").slice(0, 4) : "");
+}
+// Un résultat Openverse → morceau utilisable, ou null (lecture DÉFENSIVE).
+function _musiqueDepuisOpenverse(r) {
+  if (!r || typeof r !== "object") return null;
+  var src = musiqueSourceSure(r.url);
+  var licence = String(r.license || "").toLowerCase();
+  if (!src || MUSIQUE_LICENCES.indexOf(licence) < 0) return null;
+  // MP3 seulement : l'iPhone ne lit pas l'Ogg (fréquent chez Wikimedia et Freesound).
+  var ft = String(r.filetype || "").toLowerCase();
+  if (ft ? ft !== "mp3" : !/\.mp3(?:$|\?)/i.test(src)) return null;
+  return {
+    id: String(r.id || "").slice(0, 64), src: src,
+    titre: String(r.title || "Sans titre").slice(0, 80), artiste: String(r.creator || "Artiste inconnu").slice(0, 60),
+    licence: licence, version: String(r.license_version || "").slice(0, 8),
+    licenceUrl: _musiqueLicenceUrlSure(r.license_url), page: musiqueSourceSure(r.foreign_landing_url),
+    duree: Math.max(0, Math.round(Number(r.duration) || 0))
+  };
+}
+// Une recherche à la fois (la précédente est ANNULÉE) ; cache mémoire par requête :
+// l'API gratuite plafonne les appels anonymes.
+var _musiqueCache = {}, _musiqueCtrl = null;
+async function rechercherMusique(q) {
+  q = String(q || "").trim().toLowerCase().slice(0, 60);
+  if (_musiqueCache[q]) return _musiqueCache[q];
+  var url = OPENVERSE_AUDIO + "?q=" + encodeURIComponent(q) + "&license=" + MUSIQUE_LICENCES.join(",") + "&category=music&extension=mp3&mature=false&page_size=20";
+  try { if (_musiqueCtrl) _musiqueCtrl.abort(); } catch (e) {}
+  var ctrl = _musiqueCtrl = (typeof AbortController === "function") ? new AbortController() : null;
+  var t = ctrl ? setTimeout(function () { ctrl.abort(); }, 10000) : null;
+  try {
+    var r = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
+    if (!r.ok) return { erreur: r.status === 429 ? "trop" : "reseau" };
+    var d = await r.json();
+    var res = { liste: (Array.isArray(d && d.results) ? d.results : []).map(_musiqueDepuisOpenverse).filter(Boolean) };
+    _musiqueCache[q] = res;
+    return res;
+  } catch (e) { return { erreur: (e && e.name === "AbortError" && ctrl !== _musiqueCtrl) ? "annulee" : "reseau" }; }
+  finally { if (t) clearTimeout(t); }
+}
+// UN SEUL élément audio par usage (éditeur, lecteur) : sur iPhone, un élément
+// « débloqué » par un toucher le reste pour la suite des stories.
+var _meMusiqueAudio = null, _storyMusiqueAudio = null;
+function _meMusiqueArreter() { try { if (_meMusiqueAudio) { _meMusiqueAudio.pause(); _meMusiqueAudio.removeAttribute("src"); _meMusiqueAudio.load(); } } catch (e) {} }
+function _meMusiqueJouer(src) {
+  if (!src) return;
+  if (!_meMusiqueAudio) { _meMusiqueAudio = new Audio(); _meMusiqueAudio.loop = true; _meMusiqueAudio.preload = "none"; _meMusiqueAudio.referrerPolicy = "no-referrer"; }
+  if (_meMusiqueAudio.src !== src) _meMusiqueAudio.src = src;
+  try { var pr = _meMusiqueAudio.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (e) {}
+}
+function _meStickerMusique(panneau) {
+  _meMusiqueArreter();
+  var l = _meStickerListe(panneau, "🎵 Ajouter une musique");
+  var champ = document.createElement("input");
+  champ.type = "search"; champ.className = "me-sticker-recherche"; champ.placeholder = "Chercher une musique (chill, piano…)";
+  champ.setAttribute("aria-label", "Chercher une musique");
+  panneau.insertBefore(champ, l);
+  var puces = document.createElement("div"); puces.className = "me-musique-puces";
+  MUSIQUE_SUGGESTIONS.forEach(function (m) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "me-filtre"; b.textContent = m;
+    b.addEventListener("click", function () { champ.value = m; chercher(); });
+    puces.appendChild(b);
+  });
+  panneau.insertBefore(puces, l);
+  var credit = document.createElement("div"); credit.className = "me-musique-source";
+  credit.textContent = "Musiques libres de droits via Openverse — le crédit s'affiche sur ta story.";
+  panneau.appendChild(credit);
+  var jeton = 0;
+  var chercher = async function () {
+    clearTimeout(minuterie);
+    var q = champ.value.trim() || "chill";
+    var mien = ++jeton;
+    l.innerHTML = ""; var att = document.createElement("div"); att.className = "me-sticker-vide"; att.textContent = "Recherche…"; l.appendChild(att);
+    var r = await rechercherMusique(q);
+    if (mien !== jeton || !document.body.contains(l) || r.erreur === "annulee") return;
+    l.innerHTML = "";
+    if (r.erreur || !r.liste.length) {
+      var v = document.createElement("div"); v.className = "me-sticker-vide";
+      v.textContent = r.erreur === "trop" ? "Trop de recherches — réessaie dans une minute." : r.erreur ? "Musique indisponible — vérifie ta connexion." : "Aucune musique pour « " + q + " ».";
+      l.appendChild(v); return;
+    }
+    r.liste.forEach(function (m) {
+      var ligne = document.createElement("div"); ligne.className = "me-musique-ligne";
+      var ecoute = document.createElement("button"); ecoute.type = "button"; ecoute.className = "me-musique-ecoute"; ecoute.textContent = "▶"; ecoute.setAttribute("aria-label", "Écouter " + m.titre);
+      ecoute.addEventListener("click", function () {
+        var enCours = _meMusiqueAudio && !_meMusiqueAudio.paused && _meMusiqueAudio.src === m.src;
+        l.querySelectorAll(".me-musique-ecoute").forEach(function (x) { x.textContent = "▶"; });
+        if (enCours) { _meMusiqueArreter(); return; }
+        _meMusiqueJouer(m.src); ecoute.textContent = "⏸";
+      });
+      var info = document.createElement("button"); info.type = "button"; info.className = "me-sticker-ligne me-musique-choix";
+      var t = document.createElement("b"); t.textContent = m.titre;
+      var a = document.createElement("span"); a.textContent = m.artiste + " · " + _musiqueLibelleLicence(m.licence, m.version);
+      info.appendChild(t); info.appendChild(a); info.setAttribute("data-musique", m.id);
+      info.addEventListener("click", function () {
+        panneau.remove();
+        // UNE musique par story : la nouvelle remplace l'ancienne.
+        meState.overlays.filter(function (o) { return o.type === "musique"; }).forEach(function (o) { meRemoveOverlay(o.id); });
+        meAddOverlay({ type: "musique", src: m.src, titre: m.titre, artiste: m.artiste, licence: m.licence, version: m.version, licenceUrl: m.licenceUrl, page: m.page, x: 50, y: 18 });
+        _meMusiqueJouer(m.src);
+      });
+      ligne.appendChild(ecoute); ligne.appendChild(info);
+      l.appendChild(ligne);
+    });
+  };
+  var minuterie = null;
+  champ.addEventListener("input", function () { clearTimeout(minuterie); minuterie = setTimeout(chercher, 450); });
+  chercher();
+}
+// Lecteur de story : joue la musique de la story affichée, s'arrête avec elle.
+// Jeton de la story qui JOUE : un rejet de lecture arrivé après qu'on est passé à
+// la story suivante n'a plus rien à dire (il posait un 🔇 sur la mauvaise story).
+var _storyMusiqueJeton = 0;
+// `window._storyMusiqueCoupee` : le spectateur a coupé la musique (le temps de la session).
+function _storyMusiqueAudioPret() {
+  if (!_storyMusiqueAudio) {
+    _storyMusiqueAudio = new Audio(); _storyMusiqueAudio.loop = true; _storyMusiqueAudio.preload = "auto";
+    _storyMusiqueAudio.referrerPolicy = "no-referrer";
+  }
+  return _storyMusiqueAudio;
+}
+// iPhone : un élément audio n'est « débloqué » que par une lecture lancée PENDANT
+// un geste. Appelée à l'ouverture du lecteur (un toucher), avec un silence.
+function storyMusiqueDebloquer() {
+  try {
+    var a = _storyMusiqueAudioPret();
+    if (a.dataset.debloque === "1" || a.src) return;
+    a.dataset.debloque = "1";
+    a.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+    var pr = a.play(); if (pr && pr.then) pr.then(function () { a.pause(); }, function () {});
+  } catch (e) {}
+}
+function _storyMusiqueArreter() {
+  _storyMusiqueJeton++;
+  // Vider la source : sinon le navigateur continue de télécharger, et l'écran
+  // verrouillé garde un lecteur capable de relancer le morceau app fermée.
+  try { if (_storyMusiqueAudio) { _storyMusiqueAudio.pause(); _storyMusiqueAudio.removeAttribute("src"); _storyMusiqueAudio.load(); } } catch (e) {}
+  var b = document.getElementById("storyMusiqueSon"); if (b) b.remove();
+}
+function _storyMusiqueBouton(card, coupe) {
+  var b = document.getElementById("storyMusiqueSon");
+  if (!b) {
+    b = document.createElement("button"); b.type = "button"; b.id = "storyMusiqueSon"; b.className = "story-sound-btn";
+    b.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var a = _storyMusiqueAudio; if (!a || !a.src) return;
+      if (a.paused || a.muted) { window._storyMusiqueCoupee = false; a.muted = false; try { var pr = a.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (_) {} }
+      else { window._storyMusiqueCoupee = true; a.muted = true; }
+      _storyMusiqueBouton(card, a.muted || a.paused);
+    });
+    card.appendChild(b);
+  }
+  b.textContent = coupe ? "🔇" : "🔊";
+  b.setAttribute("aria-label", coupe ? "Activer la musique" : "Couper la musique");
+}
+function _storyMusiqueJouer(s) {
+  _storyMusiqueArreter();
+  var o = (Array.isArray(s && s.overlays) ? s.overlays : []).find(function (x) { return x && x.type === "musique"; });
+  var src = o && musiqueSourceSure(o.src);
+  if (!src) return;
+  var card = document.getElementById("storyCard"); if (!card) return;
+  // Story VIDÉO avec musique : la musique remplace le son de la vidéo, et UN seul
+  // bouton son (celui de la musique) — jamais deux boutons superposés.
+  var vid = card.querySelector("#storyMedia video");
+  if (vid) { vid.muted = true; vid.defaultMuted = true; var sb = document.getElementById("storySoundBtn"); if (sb) sb.remove(); }
+  var a = _storyMusiqueAudioPret();
+  var jeton = _storyMusiqueJeton;
+  a.src = src;
+  a.muted = !!window._storyMusiqueCoupee;
+  _storyMusiqueBouton(card, a.muted);
+  var pr = null;
+  try { pr = a.play(); } catch (e) {}
+  if (pr && pr.catch) pr.catch(function (e) {
+    if (jeton !== _storyMusiqueJeton) return;           // on a changé de story entre-temps
+    if (!e || e.name !== "NotAllowedError") return;      // interruption ordinaire, pas un refus
+    _storyMusiqueBouton(card, true);                     // un toucher sur 🔇 lancera le son
+  });
+}
+// Pause de la story (page masquée, maintien du doigt, saisie, feuille ouverte) =
+// pause de la musique ; reprise = reprise. Appelée par la minuterie de la story.
+function _storyMusiqueSuivrePause(enPause) {
+  var a = _storyMusiqueAudio; if (!a || !a.src || a.src.indexOf("data:") === 0) return;
+  if (enPause) { if (!a.paused) { a._pauseStory = true; a.pause(); } }
+  else if (a._pauseStory) { a._pauseStory = false; try { var pr = a.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (e) {} }
+}
+// Quitter l'app (accueil, lien ouvert ailleurs) : le son ne continue pas en fond.
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden) {
+    var sv = document.getElementById("storyViewer");
+    if (sv && sv.classList.contains("active")) _storyMusiqueSuivrePause(false);
+    return;
+  }
+  _storyMusiqueSuivrePause(true);
+  _meMusiqueArreter();
+});
+// Crédit d'un morceau (toucher sur le sticker) : rendu DOM, liens validés.
+function ouvrirCreditMusique(bouton) {
+  var g = storyGroups[storyGroupIdx], s = g && g.stories && g.stories[storyItemIdx];
+  var o = (Array.isArray(s && s.overlays) ? s.overlays : []).find(function (x) { return x && x.type === "musique"; });
+  if (!o) return;
+  // Pas de pause à gérer ici : la minuterie de la story s'arrête d'elle-même tant
+  // qu'une fenêtre est ouverte (#modalBackdrop.active), et la musique avec elle.
+  openModal('<div class="modal-handle"></div><div class="modal-title">🎵 Musique</div><div id="mcCorps" class="mc-corps"></div>');
+  var c = document.getElementById("mcCorps"); if (!c) return;
+  var ligne = function (txt, cls) { var d = document.createElement("div"); d.className = cls || ""; d.textContent = txt; c.appendChild(d); return d; };
+  ligne("« " + String(o.titre || "Sans titre").slice(0, 80) + " »", "mc-titre");
+  ligne(String(o.artiste || "").slice(0, 60), "mc-artiste");
+  var lib = _musiqueLibelleLicence(o.licence, o.version);
+  if (lib) {
+    var lu = _musiqueLicenceUrlSure(o.licenceUrl);
+    if (lu) { var a = document.createElement("a"); a.href = lu; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = "Licence " + lib; a.className = "mc-lien"; c.appendChild(a); }
+    else ligne("Licence " + lib, "mc-lien");
+  }
+  var page = musiqueSourceSure(o.page);
+  if (page) { var p2 = document.createElement("a"); p2.href = page; p2.target = "_blank"; p2.rel = "noopener noreferrer"; p2.textContent = "Écouter sur la page d'origine"; p2.className = "mc-lien"; c.appendChild(p2); }
+  ligne("Trouvée via Openverse (fondation WordPress).", "mc-source");
+}
+
 // ── FILTRES (2026-11-26) ─────────────────────────────────────────────────────
 // Appliqués à l'AFFICHAGE, jamais dans le fichier : la story/bobine porte un
 // overlay `{type:"filtre", f:<id>}` et chaque lecteur pose la classe
@@ -2401,6 +2654,10 @@ function _mePeindreSticker(content, ov) {
     if (ov.quand) { var quandEl = document.createElement("span"); quandEl.textContent = ov.quand; content.appendChild(quandEl); }
   } else if (ov.type === "mention") {
     content.textContent = "@" + (ov.nom || "");
+  } else if (ov.type === "musique") {
+    var tm = document.createElement("b"); tm.textContent = "🎵 " + (ov.titre || "");
+    var am = document.createElement("span"); am.textContent = ov.artiste || "";
+    content.appendChild(tm); content.appendChild(am);
   } else if (ov.type === "compte") {
     var tc = document.createElement("b"); tc.textContent = "⏳ " + (ov.titre || "");
     var rc = document.createElement("span"); rc.textContent = storyCompteTexte(ov.fin);
@@ -2435,7 +2692,7 @@ function meOuvrirStickers() {
   // dans l'overlay. 📊 Sondage reste story seulement : ses votes sont rangés par
   // `story_id` en base, une bobine n'y a pas de place sans migration.
   choix.push(["❓", "Question", _meStickerQuestion]);
-  if (meState.mode === "story" && storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]);
+  if (meState.mode === "story") { if (storySondageActif()) choix.push(["📊", "Sondage", _meStickerSondage]); choix.push(["🎵", "Musique", _meStickerMusique]); }
   choix.forEach(function (c) {
     var b = document.createElement("button"); b.type = "button"; b.className = "me-sticker-choix";
     var i = document.createElement("span"); i.className = "me-sticker-choix-ico"; i.textContent = c[0];
@@ -2616,19 +2873,62 @@ function storyVoterSondage(bouton) {
 }
 // Une bobine peut atterrir au rejeu (file de renvoi) : la marque, persistée avec
 // la publication, garantit un seul envoi des messages de mention.
+// La marque est posée AVANT la lecture des destinataires : une lecture en échec
+// ne prévient personne, et ne rouvre pas un second envoi au prochain rejeu.
 function _prevenirMentionsBobine(post) {
   if (!post || post._mentionsEnvoyees) return;
   post._mentionsEnvoyees = true;
   try { saveState(); } catch (e) {}
-  try { _prevenirMentionsStory(post.overlays, "bobine"); } catch (e) {}
+  try {
+    Promise.resolve(_lireDestinatairesMentions(post.authorId, post.overlays)).then(function (ids) {
+      if (ids && ids.length && String(post.authorId) === String(MY_UID)) _prevenirMentionsStory(post.overlays, "bobine", ids);
+    }).catch(function () {});
+  } catch (e) {}
+}
+// Les comptes mentionnés qui pourront LIRE la publication (red team du
+// 2026-11-26) : si mon compte est PRIVÉ (`profiles.is_private`, relu au
+// SERVEUR), les policies de lecture des stories et des posts ne laissent passer
+// que mes abonnés ACCEPTÉS — un autre compte mentionné apprendrait qu'un contenu
+// existe sans pouvoir l'ouvrir. Compte public : tous les mentionnés (hors
+// comptes que j'ai bloqués). `null` si
+// une lecture échoue (jamais un échec pris pour « tout le monde »), ou si
+// l'auteur n'est plus le compte courant.
+async function _lireDestinatairesMentions(auteur, overlays) {
+  if (!auteur || String(auteur) !== String(MY_UID)) return null;
+  if (typeof supa === "undefined" || !supa || typeof supa.from !== "function") return null;
+  var ids = [];
+  (overlays || []).forEach(function (o) {
+    if (!o || o.type !== "mention" || !ME_ID_STICKER.test(String(o.uid || ""))) return;
+    var u = String(o.uid);
+    if (u === String(MY_UID) || u.indexOf("u_") === 0 || ids.indexOf(u) >= 0) return;
+    // Un compte que J'AI bloqué n'est jamais prévenu. Celui qui M'A bloqué ne
+    // se voit pas d'ici (RLS `blocks_select_own`) : la messagerie le refuse.
+    if (typeof isBlocked === "function" && isBlocked(u)) return;
+    ids.push(u);
+  });
+  if (!ids.length) return ids;
+  var moi = MY_UID;
+  try {
+    var prof = await supa.from("profiles").select("is_private").eq("id", moi).maybeSingle();
+    if (moi !== MY_UID || !prof || prof.error || !prof.data) return null;
+    if (prof.data.is_private !== true) return ids;
+    var ab = await seulementAbonnementsAcceptes(supa.from("follows").select("follower_id").eq("following_id", moi)).in("follower_id", ids);
+    if (moi !== MY_UID || !ab || ab.error) return null;
+    var acceptes = new Set((ab.data || []).map(function (r) { return String(r.follower_id); }));
+    return ids.filter(function (id) { return acceptes.has(id); });
+  } catch (e) { return null; }
 }
 var ME_MENTIONS_MAX = 10;
 // Après une publication RÉUSSIE : chaque compte mentionné (réel, pas soi, pas
 // un compte d'exemple « u_… ») reçoit un message, comme sur Instagram.
-function _prevenirMentionsStory(overlays, quoi) {
+// `seulement` : la liste des comptes AUTORISÉS (`_lireDestinatairesMentions`) —
+// tout autre compte mentionné n'est pas prévenu. Un tableau vide = personne.
+function _prevenirMentionsStory(overlays, quoi, seulement) {
   var deja = {}, n = 0;
+  var permis = Array.isArray(seulement) ? new Set(seulement.map(String)) : null;
   (overlays || []).forEach(function (o) {
     if (!o || o.type !== "mention" || !ME_ID_STICKER.test(String(o.uid || ""))) return;
+    if (permis && !permis.has(String(o.uid))) return;
     if (n >= ME_MENTIONS_MAX) return;
     if (deja[o.uid] || o.uid === MY_UID || String(o.uid).indexOf("u_") === 0) return;
     deja[o.uid] = 1; n++;
@@ -2697,7 +2997,7 @@ function storyRepondreQuestion(bouton) {
 }
 (function _storyStickersBrancher() {
   document.addEventListener("click", function (e) {
-    var b = e.target && e.target.closest && e.target.closest(".story-sticker[data-evt], .story-sticker[data-uid], .st-q-rep, .st-sd-opt");
+    var b = e.target && e.target.closest && e.target.closest(".story-sticker[data-evt], .story-sticker[data-uid], .st-q-rep, .st-sd-opt, .st-musique");
     if (!b || b.closest("#mediaEditor")) return;
     e.preventDefault(); e.stopPropagation();
     var evt = b.getAttribute("data-evt"), u = b.getAttribute("data-uid");
@@ -2710,6 +3010,7 @@ function storyRepondreQuestion(bouton) {
       _storyQuitterLecteurs();
       openUserProfile(u);
     } else if (b.classList.contains("st-sd-opt")) storyVoterSondage(b);
+    else if (b.classList.contains("st-musique")) { if (b.closest("#storyOverlays")) ouvrirCreditMusique(b); }
     else storyRepondreQuestion(b);
   }, true);
 })();
@@ -2873,6 +3174,8 @@ function meAddEmoji() {
     ["meEmojiBar", "meGifPanel", "meStickerPanel"].forEach(function (id) {
       var p = document.getElementById(id);
       if (!p || p.contains(e.target)) return;
+      // Panneau musique fermé sans choisir : l'aperçu s'arrête (sauf musique déjà posée).
+      if (id === "meStickerPanel" && !meState.overlays.some(function (o) { return o.type === "musique"; })) _meMusiqueArreter();
       // Le bouton qui l'ouvre le referme lui-même (bascule) : ne pas fermer deux fois.
       if (e.target.closest && e.target.closest(".me-tool")) return;
       p.remove();
@@ -2895,8 +3198,10 @@ function meSelectOverlay(ov) {
   var el = document.getElementById(ov.id); if (el) el.classList.add("selected");
 }
 function meRemoveOverlay(id) {
+  var retire = meState.overlays.find(function (o) { return o.id === id; });
   meState.overlays = meState.overlays.filter(function(o) { return o.id !== id; });
   var el = document.getElementById(id); if (el) el.remove();
+  if (retire && retire.type === "musique") _meMusiqueArreter();
   _meMajVide();
 }
 // Applique position (left/top) + transform (scale/rotation) et garde les
@@ -2917,7 +3222,7 @@ function _meRenderOverlay(ov) {
   if (ov.type === "text") { /* peint après l'insertion du contenu (_mePeindreTexte) */ }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
   else if (ov.type === "gif") { content.innerHTML = '<img ' + passioMediaProteges.attributImage(ov.url) + '="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
-  else if (ov.type === "evenement" || ov.type === "mention" || ov.type === "question" || ov.type === "sondage" || ov.type === "compte") { _mePeindreSticker(content, ov); }
+  else if (ov.type === "evenement" || ov.type === "mention" || ov.type === "question" || ov.type === "sondage" || ov.type === "compte" || ov.type === "musique") { _mePeindreSticker(content, ov); }
   el.appendChild(content);
   if (ov.type === "text") _mePeindreTexte(el, ov);
   var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕"; del.type = "button"; del.setAttribute("aria-label", "Supprimer cet élément");
@@ -3049,6 +3354,7 @@ function _meOverlaysData() {
     if (o.type === "evenement") { c.eid = o.eid; c.titre = String(o.titre || "").slice(0, 80); c.quand = String(o.quand || "").slice(0, 40); }
     if (o.type === "mention") { c.uid = o.uid; c.nom = String(o.nom || "").slice(0, 40); }
     if (o.type === "question") { c.q = String(o.q || "").slice(0, 120); }
+    if (o.type === "musique") { c.src = musiqueSourceSure(o.src); c.titre = String(o.titre || "").slice(0, 80); c.artiste = String(o.artiste || "").slice(0, 60); c.licence = String(o.licence || "").slice(0, 8); c.version = String(o.version || "").slice(0, 8); c.licenceUrl = _musiqueLicenceUrlSure(o.licenceUrl); c.page = musiqueSourceSure(o.page); }
     if (o.type === "compte") { c.titre = String(o.titre || "").slice(0, 60); c.fin = Math.round(Number(o.fin) || 0); if (o.eid) c.eid = o.eid; }
     if (o.type === "sondage") { c.q = String(o.q || "").slice(0, 120); c.a = String(o.a || "Oui").slice(0, 30); c.b = String(o.b || "Non").slice(0, 30); }
     return c;
@@ -3083,6 +3389,7 @@ async function mePublish() {
   if (meState.dessin && meState.dessin.length) overlays.unshift({ type: "dessin", traits: meState.dessin.map(function (t) { return { c: t.c, w: t.w, p: t.p.slice() }; }) });
   var firstText = (meState.overlays.find(function(o) { return o.type === "text"; }) || {}).text || "";
   var media = meState.media, mediaType = meState.mediaType, bg = meState.bg, mode = meState.mode;
+  var audience = (mode === "story" && meState._audience === "proches" && typeof storyProchesActif === "function" && storyProchesActif()) ? "proches" : null;
 
   // ⚠️ LE REFUS DOIT PRÉCÉDER `meClose()`. Une première version plaçait ce garde
   // plus bas, dans la branche bobine — donc APRÈS la fermeture de l'éditeur. Or
@@ -3118,6 +3425,7 @@ async function mePublish() {
       bg: media ? null : bg, media: media || null, mediaType: mediaType || null,
       overlays: overlays, emoji: p.emoji || "✨", passion: p.passion || null, createdAt: Date.now(), fromSupabase: false,
     };
+    if (audience) story.audience = audience;
     state.seed.stories = state.seed.stories || [];
     state.seed.stories.unshift(story);
     try { state.seed.users = (state.seed.users || []).filter(function(u) { return u.id !== authorId; }); state.seed.users.push({ id: authorId, name: story.authorName, profileEmoji: story.authorEmoji, avatar: story.authorColor }); } catch(e) {}
@@ -3128,7 +3436,14 @@ async function mePublish() {
       // l'appareil (pas de compte, SDK absent) ne doit annoncer à personne une
       // story qu'il ne pourra pas ouvrir.
       var serveur = !!window._supaReal && typeof _uidEstUnCompte === "function" && _uidEstUnCompte();
-      if (ok === true && serveur) _prevenirMentionsStory(story.overlays, "story");
+      if (ok !== true || !serveur) return;
+      // Story « Amis proches » : aucun message de mention — un compte hors de la
+      // liste apprendrait qu'une story existe sans pouvoir l'ouvrir.
+      if (story.audience === "proches") return;
+      // Compte privé : seuls les abonnés ACCEPTÉS mentionnés sont prévenus.
+      Promise.resolve(_lireDestinatairesMentions(story.authorId, story.overlays)).then(function (ids) {
+        if (ids && ids.length && String(story.authorId) === String(MY_UID)) _prevenirMentionsStory(story.overlays, "story", ids);
+      }).catch(function () {});
     });
   } else {
     // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
@@ -3342,6 +3657,13 @@ function openStoryGroup(authorId) {
 }
 
 function openStoryViewerAt(groupIdx, itemIdx) {
+  // Débloquer l'audio (iPhone) SEULEMENT s'il y a une musique à lire : sinon une
+  // lecture de plus, inutile — et comptée comme telle en mode économe.
+  try {
+    var _avecMusique = (storyGroups || []).some(function (g) { return (g && g.stories || []).some(function (st) {
+      return Array.isArray(st && st.overlays) && st.overlays.some(function (o) { return o && o.type === "musique"; }); }); });
+    if (_avecMusique) storyMusiqueDebloquer();
+  } catch (e) {}
   if (!storyGroups.length) storyGroups = buildStoryGroups();
   if (!storyGroups.length) return;
   // Ajouter à l'historique pour que le bouton back fonctionne
@@ -3433,6 +3755,10 @@ function _storyOverlaysHtml(overlays, opts) {
       var nomAff = (connu && connu.id === o.uid && connu.name) ? connu.name : String(o.nom || "");
       return '<button type="button" class="story-ov story-sticker st-mention" style="' + pos + '" data-uid="' + escapeHtml(o.uid) + '">@' + escapeHtml(nomAff.slice(0, 40)) + '</button>';
     }
+    if (o.type === "musique" && dansStory) {
+      if (!musiqueSourceSure(o.src)) return "";
+      return '<button type="button" class="story-ov story-sticker st-musique" style="' + pos + '"><b>🎵 ' + escapeHtml(String(o.titre || "").slice(0, 80)) + '</b><span>' + escapeHtml(String(o.artiste || "").slice(0, 60)) + '</span></button>';
+    }
     if (o.type === "compte") {
       var fin = Number(o.fin), lien = ME_ID_STICKER.test(String(o.eid || ""));
       if (!Number.isFinite(fin)) return "";
@@ -3503,7 +3829,8 @@ function playCurrentStory() {
       _b2.addEventListener("click", function (e) {
         e.stopPropagation();
         window._storyEnPause = true;
-        ouvrirFeuilleConfirmation({ titre: "Ta story", actions: [{ id: "supprimer", libelle: "Supprimer cette story", danger: true, agir: function () { supprimerMaStory(s.id); } }], surAnnuler: function () { window._storyEnPause = false; } });
+        var _actsUne = (typeof _storyActionsUne === "function") ? _storyActionsUne(s) : [];
+        ouvrirFeuilleConfirmation({ titre: "Ta story", actions: _actsUne.concat([{ id: "supprimer", libelle: "Supprimer cette story", danger: true, agir: function () { supprimerMaStory(s.id); } }]), surAnnuler: function () { window._storyEnPause = false; } });
       });
       _hdr.insertBefore(_b2, _hdr.querySelector(".story-viewer-close"));
     }
@@ -3516,6 +3843,7 @@ function playCurrentStory() {
     }
     _barreReponseStory(s, u.name, _reel);
   } catch (e) {}
+  try { _storyPastilleProches(s); } catch (e) {}
 
   const card = $("#storyCard");
   card.style.background = _storyFondCss(s);
@@ -3564,6 +3892,7 @@ function playCurrentStory() {
   const overlays = Array.isArray(s.overlays) ? s.overlays : [];
   if (ovLayer) ovLayer.innerHTML = _storyOverlaysHtml(overlays, { story: true });
   try { if (overlays.some(function (o) { return o && o.type === "sondage"; })) _storySondagePeindre(s); } catch (e) {}
+  try { _storyMusiqueJouer(s); } catch (e) {}
 
   if (overlays.length) {
     $("#storyContent").innerHTML = "";
@@ -3604,8 +3933,10 @@ function playCurrentStory() {
       // avant d'avoir été regardée. Une page masquée ne consomme pas les stories.
       // Une feuille ouverte par-dessus (partage, signalement, porte de compte)
       // met la story en pause ; elle reprend à la fermeture.
-      if (document.hidden || (storyVideo && storyVideo.paused) || window._storyEnPause
-          || document.querySelector("#modalBackdrop.active, #feuilleConfirmation")) return;
+      const _enPause = document.hidden || window._storyEnPause
+          || !!document.querySelector("#modalBackdrop.active, #feuilleConfirmation");
+      try { _storyMusiqueSuivrePause(_enPause); } catch (_e) {}
+      if (_enPause || (storyVideo && storyVideo.paused)) return;
       // Une story VIDÉO dure le temps de sa vidéo (bornée à 60 s), et sa barre
       // suit la LECTURE réelle : ni l'attente des métadonnées ni un temps de mise
       // en mémoire ne comptent (réseau lent), et la fin se lit au retour en
@@ -4372,6 +4703,7 @@ function storyGroupeVoisin(sens) {
 
 function closeStoryViewer(options) {
   clearInterval(storyTimer);
+  try { _storyMusiqueArreter(); } catch (e) {}
   const sv = $("#storyViewer");
   const etaitOuvert = !!(sv && sv.classList.contains("active"));
   if (sv) sv.querySelectorAll('video[data-video-public-src]').forEach(arreterVideoPublique);
@@ -4386,6 +4718,384 @@ function closeStoryViewer(options) {
     releaseOverlayHistory();
     if (!(options && options.versAutreEcran) && window.PassioFirstRun) window.PassioFirstRun.apresLectureStory();
   }
+  try { _storyUneApresFermeture(options); } catch (e) {}
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// STORIES « AMIS PROCHES » ET « À LA UNE » (lot E, 2026-11-26) — façon Instagram
+// Serveur : migrations/migration_stories_proches_une_2026-11-26.sql (banc
+// tests/sql/migration-stories-proches-une.test.sh). Fiche :
+// docs/lots-ui/32-STORY-CREER-2026-11-26.md, lot E.
+//
+// DEUX DRAPEAUX, ALLUMÉS le 2026-11-26 après l'application de la migration en
+// production (verdict 8/8, état mesuré en base). Les repasser à `false` retire
+// les portes de création (bouton, « Mettre à la une », rangée du profil) sans
+// toucher aux stories publiées. Une story « proches » refusée par un serveur
+// sans la colonne n'est JAMAIS republiée pour tous.
+// La confidentialité ne dépend PAS du client : la RLS ferme la lecture, le
+// média, les j'aime, vues, commentaires et votes hors de la liste.
+// ════════════════════════════════════════════════════════════════════════
+var STORY_PROCHES_ACTIF = true;
+var STORY_UNE_ACTIF = true;
+function storyProchesActif() {
+  if (STORY_PROCHES_ACTIF) return true;
+  try { return localStorage.getItem("passio_story_proches") === "1"; } catch (e) { return false; }
+}
+function storyUneActif() {
+  if (STORY_UNE_ACTIF) return true;
+  try { return localStorage.getItem("passio_story_une") === "1"; } catch (e) { return false; }
+}
+// Table ou colonne absente (migration pas encore appliquée).
+function _storyLotAbsent(err) {
+  var c = String((err && err.code) || "");
+  return c === "42P01" || c === "PGRST205" || c === "42703" || c === "PGRST204";
+}
+function _storyLotServeur() {
+  return !!(window._supaReal && typeof supa !== "undefined" && supa
+    && typeof _uidEstUnCompte === "function" && _uidEstUnCompte() && typeof MY_UID !== "undefined" && MY_UID);
+}
+var RE_UID_STORY_LOT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ── Amis proches : la liste (lue et écrite par son propriétaire SEUL) ─────────
+// Cache mémoire PAR COMPTE (jamais dans `state`, qui peut appartenir à un autre
+// compte que la session).
+var _amisProches = { uid: null, ids: null, charge: null };
+function chargerAmisProches(forcer) {
+  if (!_storyLotServeur()) return Promise.resolve([]);
+  if (!forcer && _amisProches.uid === MY_UID && _amisProches.ids) return Promise.resolve(Array.from(_amisProches.ids));
+  if (!forcer && _amisProches.uid === MY_UID && _amisProches.charge) return _amisProches.charge;
+  var moi = MY_UID;
+  _amisProches = { uid: moi, ids: null, charge: null };
+  _amisProches.charge = Promise.resolve(supa.from("amis_proches").select("ami_id").limit(1000)).then(function (res) {
+    if (_amisProches.uid !== moi) return [];
+    if (!res || res.error) { _amisProches.charge = null; return []; }
+    _amisProches.ids = new Set((res.data || []).map(function (r) { return String(r.ami_id); }));
+    return Array.from(_amisProches.ids);
+  }).catch(function () { _amisProches.charge = null; return []; });
+  return _amisProches.charge;
+}
+// Ajoute / retire : l'INTENTION part, `{ error }` est lu, l'écran suit le verdict.
+async function basculerAmiProche(uid, ajouter) {
+  if (!_storyLotServeur() || !RE_UID_STORY_LOT.test(String(uid || "")) || uid === MY_UID) return false;
+  var moi = MY_UID;
+  try {
+    var res = ajouter
+      ? await supa.from("amis_proches").insert({ ami_id: String(uid) })
+      : await supa.from("amis_proches").delete().eq("owner_id", moi).eq("ami_id", String(uid)).select("ami_id");
+    if (moi !== MY_UID) return false;
+    var err = res && res.error;
+    if (ajouter && err && String(err.code) === "23505") err = null;        // déjà dans la liste
+    if (err) {
+      toast(_storyLotAbsent(err) ? "Amis proches : bientôt disponible" : "Liste non modifiée — réessaie", "warning");
+      return false;
+    }
+    if (_amisProches.uid === moi && _amisProches.ids) { if (ajouter) _amisProches.ids.add(String(uid)); else _amisProches.ids.delete(String(uid)); }
+    return true;
+  } catch (e) { toast("Liste non modifiée — réessaie", "warning"); return false; }
+}
+// Candidats : les comptes que je connais (abonnements, conversations, fil),
+// hors exemples et hors comptes bloqués, plus ceux déjà dans la liste.
+function _candidatsAmisProches(q) {
+  var vus = {}, out = [];
+  var ajouter = function (id, nom, emoji, couleur) {
+    id = String(id || "");
+    if (!RE_UID_STORY_LOT.test(id) || id === MY_UID || vus[id]) return;
+    if (typeof isBlocked === "function" && isBlocked(id)) return;
+    vus[id] = 1; out.push({ id: id, name: nom || "Passionné", emoji: emoji || "✨", color: couleur || "#8b5cf6" });
+  };
+  (state.seed.users || []).forEach(function (u) { if (u) ajouter(u.id, u.name, u.profileEmoji, u.avatar); });
+  if (_amisProches.ids) _amisProches.ids.forEach(function (id) { ajouter(id, (typeof userById === "function" && userById(id) || {}).name, null, null); });
+  q = String(q || "").trim().toLowerCase();
+  if (q) out = out.filter(function (u) { return String(u.name).toLowerCase().indexOf(q) > -1; });
+  out.sort(function (a, b) {
+    var pa = _amisProches.ids && _amisProches.ids.has(a.id) ? 0 : 1, pb = _amisProches.ids && _amisProches.ids.has(b.id) ? 0 : 1;
+    return pa !== pb ? pa - pb : String(a.name).localeCompare(String(b.name));
+  });
+  return out.slice(0, 60);
+}
+// Feuille « Amis proches » : rendu DOM, jamais d'onclick inline portant
+// l'identifiant ou le nom d'un autre compte (règle MSG-02).
+async function ouvrirAmisProches() {
+  if (!storyProchesActif()) return;
+  if (!_storyLotServeur()) { toast("Connecte-toi pour choisir tes amis proches"); return; }
+  window._storyEnPause = true;
+  openModal('<div class="modal-handle"></div><div class="modal-title">⭐ Amis proches</div>'
+    + '<p class="amis-proches-aide">Seules les personnes de cette liste voient tes stories « Amis proches ». Personne d\'autre ne voit la liste.</p>'
+    + '<input type="search" class="input" id="amisProchesRecherche" placeholder="Rechercher" autocomplete="off"/>'
+    + '<div class="amis-proches-liste" id="amisProchesListe" role="list"><p class="amis-proches-vide">Chargement…</p></div>', "amis_proches");
+  await chargerAmisProches(true);
+  var champ = document.getElementById("amisProchesRecherche");
+  var peindre = function () {
+    var liste = document.getElementById("amisProchesListe");
+    if (!liste) return;
+    var gens = _candidatsAmisProches(champ ? champ.value : "");
+    liste.innerHTML = "";
+    if (!gens.length) { var v = document.createElement("p"); v.className = "amis-proches-vide"; v.textContent = "Personne à proposer pour l'instant : suis des passionnés ou échange avec eux."; liste.appendChild(v); return; }
+    gens.forEach(function (u) {
+      var ligne = document.createElement("div"); ligne.className = "amis-proches-ligne"; ligne.setAttribute("role", "listitem");
+      var av = document.createElement("span"); av.className = "amis-proches-avatar"; av.style.background = _cssColor(u.color); av.textContent = u.emoji;
+      var nom = document.createElement("span"); nom.className = "amis-proches-nom"; nom.textContent = u.name;
+      var b = document.createElement("button"); b.type = "button"; b.className = "amis-proches-bascule";
+      var dedans = !!(_amisProches.ids && _amisProches.ids.has(u.id));
+      var poser = function (oui) { b.classList.toggle("on", oui); b.textContent = oui ? "★ Ajouté" : "Ajouter"; b.setAttribute("aria-pressed", oui ? "true" : "false"); b.setAttribute("aria-label", (oui ? "Retirer " : "Ajouter ") + u.name + (oui ? " des amis proches" : " aux amis proches")); };
+      poser(dedans);
+      b.addEventListener("click", async function () {
+        if (b.disabled) return;
+        var veut = !b.classList.contains("on");
+        b.disabled = true; poser(veut);                                   // optimiste
+        var ok = await basculerAmiProche(u.id, veut);
+        b.disabled = false;
+        if (!ok) poser(!veut);                                            // échec réel : on annule
+      });
+      ligne.appendChild(av); ligne.appendChild(nom); ligne.appendChild(b);
+      liste.appendChild(ligne);
+    });
+  };
+  if (champ) champ.addEventListener("input", peindre);
+  peindre();
+}
+
+// Rangée « Publier ma story | ⭐ Amis proches | ✎ » (story, compte réel). UNE
+// rangée, pas trois lignes : `.me-bottom` ne doit pas grandir, sinon il passe
+// sous la barre d'outils et « Publier » ne reçoit plus le toucher (vécu au banc).
+function _mePeindreBoutonProches() {
+  var pub = document.getElementById("mePublishBtn");
+  if (!pub) return;
+  var ligne = document.getElementById("mePublierLigne");
+  var voulu = !!(meState && meState.mode === "story" && storyProchesActif() && _storyLotServeur());
+  if (!voulu) {
+    if (ligne) { ligne.parentNode.insertBefore(pub, ligne); ligne.remove(); }
+    return;
+  }
+  if (!ligne) {
+    ligne = document.createElement("div");
+    ligne.id = "mePublierLigne"; ligne.className = "me-publier-ligne";
+    pub.parentNode.insertBefore(ligne, pub);
+    ligne.appendChild(pub);
+    var proches = document.createElement("button");
+    proches.type = "button"; proches.id = "mePublishProchesBtn"; proches.className = "btn me-publier-proches";
+    proches.textContent = "⭐ Amis proches";
+    proches.setAttribute("aria-label", "Publier pour mes amis proches seulement");
+    proches.addEventListener("click", function () { mePublishProches(); });
+    ligne.appendChild(proches);
+    var liste = document.createElement("button");
+    liste.type = "button"; liste.id = "meAmisProchesLien"; liste.className = "me-amis-proches-lien";
+    liste.textContent = "✎";
+    liste.setAttribute("aria-label", "Modifier ma liste d'amis proches");
+    liste.addEventListener("click", function () { ouvrirAmisProches(); });
+    ligne.appendChild(liste);
+  }
+  chargerAmisProches();
+}
+async function mePublishProches() {
+  if (!storyProchesActif() || !_storyLotServeur()) return;
+  var ids = await chargerAmisProches();
+  if (!ids.length) { toast("Ajoute d'abord des amis proches"); ouvrirAmisProches(); return; }
+  meState._audience = "proches";
+  try { await mePublish(); } finally { if (meState) meState._audience = null; }
+}
+
+// ── Lecteur : anneau vert, pastille « Amis proches » ─────────────────────────
+function _storyEstProches(s) { return !!(s && s.audience === "proches"); }
+function _storyPastilleProches(s) {
+  var hdr = document.querySelector("#storyViewer .story-viewer-header");
+  var old = document.getElementById("storyProchesPastille"); if (old) old.remove();
+  if (!hdr || !_storyEstProches(s)) return;
+  var p = document.createElement("span");
+  p.id = "storyProchesPastille"; p.className = "story-proches-pastille"; p.textContent = "⭐ Amis proches";
+  hdr.insertBefore(p, hdr.querySelector(".story-more-btn, .story-viewer-close"));
+}
+
+// ── À la une ─────────────────────────────────────────────────────────────────
+// Cache par compte affiché, 60 s : `renderMainProfile` est rappelée souvent.
+var _storiesUneCache = {};
+function _storyLigneVersStory(r, profs) {
+  var p = (profs && profs[r.author_id]) || {};
+  return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6",
+    passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨",
+    media: r.media_url || null, mediaType: r.media_type || null, createdAt: supaTs(r.created_at),
+    overlays: r.overlays || null, audience: r.audience === "proches" ? "proches" : "tous", fromSupabase: true };
+}
+async function chargerStoriesUne(uid, forcer) {
+  uid = String(uid || "");
+  if (!storyUneActif() || !RE_UID_STORY_LOT.test(uid) || !window._supaReal || typeof supa === "undefined" || !supa) return [];
+  var c = _storiesUneCache[uid];
+  if (!forcer && c && (Date.now() - c.t) < 60000) return c.groupes;
+  try {
+    var r1 = await supa.from("stories_une").select("story_id,groupe,created_at").eq("owner_id", uid).order("created_at", { ascending: true }).limit(500);
+    if (r1.error) { if (!_storyLotAbsent(r1.error)) console.warn("stories à la une :", r1.error.message); return []; }
+    var lignes = r1.data || [];
+    var ids = Array.from(new Set(lignes.map(function (l) { return String(l.story_id); })));
+    var stories = {};
+    if (ids.length) {
+      var r2 = await supa.from("stories").select("*").in("id", ids).eq("author_id", uid);
+      if (r2.error) return [];
+      var profs = (typeof _resolveProfilesByIds === "function") ? await _resolveProfilesByIds([uid]) : {};
+      (r2.data || []).forEach(function (r) { stories[r.id] = _storyLigneVersStory(r, profs); });
+    }
+    var ordre = [], parGroupe = {};
+    lignes.forEach(function (l) {
+      var s = stories[l.story_id]; if (!s) return;                    // story non lisible par moi
+      var g = String(l.groupe || "").slice(0, 24);
+      if (!parGroupe[g]) { parGroupe[g] = []; ordre.push(g); }
+      parGroupe[g].push(s);
+    });
+    var groupes = ordre.map(function (g) {
+      var st = parGroupe[g].slice().sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
+      return { titre: g, stories: st };
+    });
+    _storiesUneCache[uid] = { t: Date.now(), groupes: groupes };
+    return groupes;
+  } catch (e) { return []; }
+}
+// Rangée de bulles sous la bio. `estMoi` : bulle « + Nouveau ».
+async function peindreStoriesUne(hote, uid, estMoi) {
+  if (!hote) return;
+  if (!storyUneActif()) { hote.hidden = true; hote.innerHTML = ""; return; }
+  var groupes = await chargerStoriesUne(uid);
+  if (!hote.isConnected) return;
+  hote.innerHTML = "";
+  var plus = !!(estMoi && _storyLotServeur());
+  if (!groupes.length && !plus) { hote.hidden = true; return; }
+  hote.hidden = false;
+  if (plus) {
+    var n = document.createElement("button"); n.type = "button"; n.className = "une-bulle une-nouveau";
+    n.innerHTML = '<span class="une-cercle" aria-hidden="true">+</span><span class="une-titre">Nouveau</span>';
+    n.setAttribute("aria-label", "Mettre une story à la une");
+    n.addEventListener("click", function () { ouvrirChoixStoryUne(); });
+    hote.appendChild(n);
+  }
+  groupes.forEach(function (g) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "une-bulle";
+    var cercle = document.createElement("span"); cercle.className = "une-cercle";
+    var couv = g.stories[g.stories.length - 1];
+    cercle.style.background = _storyFondCss(couv);
+    var img = couv && couv.media && couv.mediaType !== "video";
+    if (img) cercle.innerHTML = '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(passioMediaProteges.route(couv.media, { type: "stories", id: couv.id })) + '="' + safeUrlAttr(passioMediaProteges.route(couv.media, { type: "stories", id: couv.id })) + '" alt="" onerror="this.style.display=\'none\'"/>';
+    else cercle.textContent = (couv && couv.emoji) || "✨";
+    var t = document.createElement("span"); t.className = "une-titre"; t.textContent = g.titre;
+    b.appendChild(cercle); b.appendChild(t);
+    b.setAttribute("aria-label", "Voir « " + g.titre + " »");
+    b.addEventListener("click", function () { ouvrirStoriesUne(uid, g.titre); });
+    hote.appendChild(b);
+  });
+}
+// Ouvre un groupe « à la une » dans le lecteur. Depuis le profil d'un AUTRE
+// compte (modale, au-dessus du lecteur), on ferme la modale et on y revient à
+// la fermeture du lecteur.
+async function ouvrirStoriesUne(uid, titre) {
+  var groupes = await chargerStoriesUne(uid);
+  var g = groupes.find(function (x) { return x.titre === titre; });
+  if (!g || !g.stories.length) { toast("Cette story n'est plus disponible"); return; }
+  var s0 = g.stories[0];
+  var retour = null;
+  var bd = document.getElementById("modalBackdrop");
+  if (bd && bd.classList.contains("active")) { retour = String(uid); closeModal(); }
+  storyGroups = [{ authorId: s0.authorId, name: s0.authorName, emoji: s0.authorEmoji, color: s0.authorColor, stories: g.stories.slice(), une: g.titre, retourProfil: retour }];
+  openStoryViewerAt(0, 0);
+}
+// Fermeture du lecteur : revenir au profil visité d'où l'on avait ouvert la une.
+function _storyUneApresFermeture(options) {
+  var g = storyGroups && storyGroups[0];
+  var retour = g && g.une && g.retourProfil;
+  if (!retour) return;
+  g.retourProfil = null;
+  if (options && options.versAutreEcran) return;
+  setTimeout(function () { try { openUserProfile(retour); } catch (e) {} }, 0);
+}
+// Feuille « Mettre à la une » : groupes existants + titre neuf.
+async function choisirGroupeUne(storyId) {
+  if (!storyUneActif() || !_storyLotServeur()) return;
+  var s = (state.seed.stories || []).find(function (x) { return x && x.id === storyId; })
+    || ((storyGroups[storyGroupIdx] || {}).stories || []).find(function (x) { return x && x.id === storyId; });
+  if (!s || !s.fromSupabase || (s.authorId !== MY_UID)) { toast("Seule une story publiée peut aller à la une"); return; }
+  window._storyEnPause = true;
+  var groupes = await chargerStoriesUne(MY_UID, true);
+  openModal('<div class="modal-handle"></div><div class="modal-title">Mettre à la une</div>'
+    + '<div class="une-choix" id="uneChoixGroupes"></div>'
+    + '<label class="une-nouveau-titre">Nouveau groupe<input type="text" class="input" id="uneNouveauTitre" maxlength="24" placeholder="Ex. Voyages" autocomplete="off"/></label>'
+    + '<button type="button" class="btn primary block" id="uneCreerBtn">Ajouter</button>', "stories_une");
+  var zone = document.getElementById("uneChoixGroupes");
+  groupes.forEach(function (g) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "btn ghost une-groupe-btn";
+    var deja = g.stories.some(function (x) { return x.id === storyId; });
+    b.textContent = (deja ? "✓ " : "") + g.titre; b.disabled = deja;
+    b.addEventListener("click", function () { epinglerStory(storyId, g.titre); });
+    zone.appendChild(b);
+  });
+  var go = document.getElementById("uneCreerBtn");
+  if (go) go.addEventListener("click", function () {
+    var champ = document.getElementById("uneNouveauTitre");
+    var titre = String(champ && champ.value || "").replace(/[\u0000-\u001f\u007f\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g, "").trim().slice(0, 24);
+    if (!titre) { toast("Donne un titre au groupe"); return; }
+    epinglerStory(storyId, titre);
+  });
+}
+async function epinglerStory(storyId, titre) {
+  if (!_storyLotServeur()) return false;
+  var moi = MY_UID;
+  try {
+    var res = await supa.from("stories_une").insert({ story_id: String(storyId), groupe: String(titre) });
+    if (moi !== MY_UID) return false;
+    var err = res && res.error;
+    if (err && String(err.code) !== "23505") {
+      toast(_storyLotAbsent(err) ? "À la une : bientôt disponible" : (String(err.code) === "P0001" ? "Limite atteinte pour la une" : "Non ajoutée — réessaie"), "warning");
+      return false;
+    }
+    delete _storiesUneCache[moi];
+    closeModal();
+    window._storyEnPause = false;
+    toast("Ajoutée à « " + titre + " »", "success");
+    try { _rafraichirUneProfil(); } catch (e) {}
+    return true;
+  } catch (e) { toast("Non ajoutée — réessaie", "warning"); return false; }
+}
+async function retirerDeLaUne(storyId, titre) {
+  if (!_storyLotServeur()) return false;
+  var moi = MY_UID;
+  try {
+    var res = await supa.from("stories_une").delete().eq("owner_id", moi).eq("story_id", String(storyId)).eq("groupe", String(titre)).select("story_id");
+    if (res.error || !res.data || !res.data.length) { toast("Non retirée — réessaie", "warning"); window._storyEnPause = false; return false; }
+    delete _storiesUneCache[moi];
+    var g = storyGroups[storyGroupIdx];
+    if (g && g.une === titre) {
+      g.stories = g.stories.filter(function (x) { return x.id !== storyId; });
+      if (storyItemIdx >= g.stories.length) storyItemIdx = Math.max(0, g.stories.length - 1);
+    }
+    window._storyEnPause = false;
+    toast("Retirée de « " + titre + " »", "success");
+    if (g && g.une === titre && g.stories.length) playCurrentStory(); else closeStoryViewer();
+    try { _rafraichirUneProfil(); } catch (e) {}
+    return true;
+  } catch (e) { toast("Non retirée — réessaie", "warning"); window._storyEnPause = false; return false; }
+}
+// « + Nouveau » : mes stories en cours (serveur) à choisir.
+function ouvrirChoixStoryUne() {
+  var miennes = (state.seed.stories || []).filter(function (s) { return s && s.fromSupabase && s.authorId === MY_UID; });
+  if (!miennes.length) { toast("Publie une story, puis mets-la à la une depuis « ⋯ »"); return; }
+  openModal('<div class="modal-handle"></div><div class="modal-title">Choisis une story</div><div class="une-grille" id="uneGrille"></div>', "stories_une");
+  var grille = document.getElementById("uneGrille");
+  miennes.forEach(function (s) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "une-vignette";
+    b.style.background = _storyFondCss(s);
+    if (s.media && s.mediaType !== "video") b.innerHTML = '<img loading="lazy" decoding="async" ' + passioMediaProteges.attributImage(passioMediaProteges.route(s.media, { type: "stories", id: s.id })) + '="' + safeUrlAttr(passioMediaProteges.route(s.media, { type: "stories", id: s.id })) + '" alt=""/>';
+    else b.textContent = String(s.text || s.content || "✨").slice(0, 40);
+    b.setAttribute("aria-label", "Choisir cette story");
+    b.addEventListener("click", function () { choisirGroupeUne(s.id); });
+    grille.appendChild(b);
+  });
+}
+function _rafraichirUneProfil() {
+  var hote = document.getElementById("mainStoriesUne");
+  if (hote && typeof MY_UID !== "undefined" && MY_UID) peindreStoriesUne(hote, MY_UID, true);
+}
+// Actions du « ⋯ » de MA story : la une (ajouter, ou retirer quand on lit un groupe).
+function _storyActionsUne(s) {
+  if (!storyUneActif() || !_storyLotServeur() || !s || !s.fromSupabase || s.authorId !== MY_UID) return [];
+  var g = storyGroups[storyGroupIdx];
+  var acts = [{ id: "une", libelle: "⭐ Mettre à la une", agir: function () { choisirGroupeUne(s.id); } }];
+  if (g && g.une) acts.unshift({ id: "une_retirer", libelle: "Retirer de « " + g.une + " »", agir: function () { retirerDeLaUne(s.id, g.une); } });
+  return acts;
 }
 
 // ======== NOTIFICATIONS ========
@@ -5658,6 +6368,8 @@ async function boot() {
         // suivre (invitation de l'appareil seul). Après `supaLoadUserState` —
         // l'état du compte dit si l'invitation a déjà servi — et sans retenir
         // le démarrage.
+        // Un lien d'invitation PRIVÉE ouvert avant de se connecter (app-07).
+        try { if (typeof reprendreInvitationActivite === "function") setTimeout(reprendreInvitationActivite, 0); } catch (e) {}
         try {
           if (typeof appliquerInvitation === "function") {
             Promise.resolve(appliquerInvitation(session)).catch(function (e) {
@@ -7434,6 +8146,9 @@ let _feedPagination = null;
 // pas concernés : ils ne remplacent pas la tête.
 let _feedTeteSeq = 0;
 let _feedTeteDerniereServie = 0;
+let _feedCartesBrutes = null;
+let _feedCartesRpcAbsentJusqua = 0;
+const _feedRevisionsAffichees = new WeakMap();
 
 async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
   // Hors du `try` : le `catch` final rend lui aussi le verdict réseau de la tête.
@@ -7454,6 +8169,7 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (teteSeq && teteSeq > _feedTeteDerniereServie) {
         _feedTeteDerniereServie = teteSeq;
         noterLectureTeteFil(false);
+        if (options.teteServie) options.teteServie(teteSeq);
       }
     };
     const pageSize = authorId ? 60 : FEED_SERVER_PAGE_SIZE;
@@ -7482,7 +8198,23 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       const debut = options.cursor && !authorId ? 0 : offset;
       return await q.order("created_at", { ascending: false }).order("id", { ascending: false }).range(debut, debut + pageSize - 1);
     }
-    let { data, error, status } = await _interroger(COLONNES);
+    // La variante a réduit les octets, mais a dépassé le seuil de latence du banc.
+    const versionner = teteSeq && owner && SUPABASE_URL === "https://fcksxofaelcdmmifnwjo.supabase.co"
+      && window.PASSIO_SUPABASE_CIBLE?.testerCartesFil === true
+      && Date.now() >= _feedCartesRpcAbsentJusqua && typeof PassioCartesFil !== "undefined";
+    const precedentBrut = _feedCartesBrutes;
+    function carteAdmissible(r) {
+      return !r.profiles?.is_private && !(typeof postSupprime === "function" && postSupprime(r.id))
+        && !projectionHeritageLecture().candidat(r.media_url);
+    }
+    let resultat = versionner ? await PassioCartesFil.lire(connues => supa.rpc("fil_cartes_page", { _versions: connues }),
+      precedentBrut && precedentBrut.owner === owner && precedentBrut.generation === cacheGeneration
+        ? precedentBrut.page : null, carteAdmissible) : await _interroger(COLONNES);
+    if (versionner && ["PGRST202", "42883", "42501", "PAGE_FIL_INVALIDE"].includes(resultat.error?.code)) {
+      if (["PGRST202", "42883"].includes(resultat.error.code)) _feedCartesRpcAbsentJusqua = Date.now() + 3600000;
+      resultat = await _interroger(COLONNES);
+    }
+    let { data, error, status } = resultat;
     if (error && /edited_at/.test(error.message || "")) {
       COLONNES = COLONNES.replace(" edited_at,", "");
       ({ data, error, status } = await _interroger(COLONNES));
@@ -7516,6 +8248,14 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
     // Ne publier ni curseur ni cache avant le dernier await d'hydratation.
     function memoriserPage() {
       if (authorId || !lectureValide()) return;
+      if (teteSeq) {
+        const page = resultat.cache;
+        if (page) {
+          const visibles = new Set(data.map(r => r.id));
+          for (const id of page.lignes.keys()) if (!visibles.has(id)) page.lignes.delete(id);
+        }
+        _feedCartesBrutes = page && page.lignes.size ? { owner, generation: cacheGeneration, page } : null;
+      }
       const derniere = lignesBrutes[lignesBrutes.length - 1];
       const cursor = derniere && derniere.created_at ? { created_at: derniere.created_at, id: derniere.id } : null;
       if (options.pagePassions) {
@@ -7787,7 +8527,9 @@ async function supaLoadPosts(offset = 0, authorId = null, options = {}) {
       if (cpl.reactionsLues === true && typeof _recopierReactionsAutrui === "function") {
         _recopierReactionsAutrui(r.id, loadedPost.reactions, reactionsAvant);
       }
-      return _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id));
+      const carte = _postLikeReconcileLoaded(loadedPost, likeReadTokens.get(r.id), cpl.likesLusLe);
+      _feedRevisionsAffichees.set(carte, [r.xmin, r.profiles?.xmin, _pmpRef && _pmpPresentation ? r.media_url : ""].join(":"));
+      return carte;
     });
   } catch(e) {
     if (options.propagerErreur) throw e;
@@ -7957,12 +8699,15 @@ async function _chargerComplementsFil(postIds) {
       // POST, jamais GET : un identifiant de publication est un texte choisi par
       // son auteur ; la forme `{a,b}` d'un tableau en paramètre d'URL casserait
       // sur une virgule ou une accolade. Le corps JSON les transporte tels quels.
+      const debutLecture = Date.now();
       const { data, error, status } = await supa.rpc("fil_compteurs", { _post_ids: ids });
       if (!error && Array.isArray(data)) {
         data.forEach(function (row) {
           if (!row || !row.post_id) return;
+          const likesLus = Number.isSafeInteger(row.likes) && row.likes >= 0;
           parPost.set(row.post_id, {
-            likes: Number.isSafeInteger(row.likes) && row.likes >= 0 ? row.likes : 0,
+            likes: likesLus ? row.likes : 0,
+            likesLusLe: likesLus ? debutLecture : 0,
             aime: row.aime === true,
             commentaires: Number.isSafeInteger(row.commentaires) && row.commentaires >= 0 ? row.commentaires : undefined,
             apercus: Array.isArray(row.apercus) ? row.apercus.filter(function (c) { return c && c.id; }) : [],
@@ -8526,6 +9271,9 @@ async function _envoyerStory(story) {
       overlays: (story.overlays && story.overlays.length) ? story.overlays : null,
       created_at: new Date().toISOString(),
     };
+    // « Amis proches » : la colonne n'est envoyée QUE pour cette audience (un
+    // serveur sans la migration refuse alors la story — jamais publiée pour tous).
+    if (story.audience === "proches") payload.audience = "proches";
     const res=await passioMediaProteges.avecSession(async function(c){return supa.from("stories").insert(payload).select("id,author_id,media_url").abortSignal(c.signal);});
     if(!passioMediaProteges.courant(_pmpCompte))return false;
     // Le SDK ne lève pas sur refus RLS : sans lire res.error, une story rejetée
@@ -8555,7 +9303,7 @@ async function supaLoadStories() {
     if (error) { console.warn("supaLoadStories:", error.message); return []; }
     const rows = data || [];
     const profs = await _resolveProfilesByIds(rows.map(r => r.author_id));
-    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null, mediaType: r.media_type || null, overlays: r.overlays || null, createdAt: supaTs(r.created_at), fromSupabase: true }; });
+    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null, mediaType: r.media_type || null, overlays: r.overlays || null, audience: r.audience === "proches" ? "proches" : "tous", createdAt: supaTs(r.created_at), fromSupabase: true }; });
   } catch(e) { return []; }
 }
 
@@ -8677,6 +9425,47 @@ async function supaInviterActivite(eventId, userIds) {
     if (error) { console.warn("supaInviterActivite:", error.code || error.message); return false; }
     return true;
   } catch (e) { console.warn("supaInviterActivite:", e && e.message); return false; }
+}
+
+// ── Activités privées, suite (2026-11-26, migration_activites_privees_suite) ──
+// Les invités d'une activité : l'organisation lit toute la liste (RLS
+// `event_invites_lecture`). Rend null si illisible (jamais [] sur un échec).
+async function supaLireInvitesActivite(eventId) {
+  if (!eventId || !window._supaReal || !_compteAuthReel()) return null;
+  try {
+    const { data, error } = await supa.from("event_invites").select("user_id").eq("event_id", eventId).limit(500);
+    if (error) { console.warn("supaLireInvitesActivite:", error.code || error.message); return null; }
+    return (data || []).map(function (l) { return l.user_id; });
+  } catch (e) { return null; }
+}
+// Retirer un invité : invitation, inscription et place dans la discussion,
+// d'un geste côté base (`retirer_invite_activite`, réservée à l'organisation).
+async function supaRetirerInviteActivite(eventId, userId) {
+  if (!eventId || !userId || !window._supaReal || !_compteAuthReel()) return false;
+  try {
+    const { data, error } = await supa.rpc("retirer_invite_activite", { p_event_id: eventId, p_user_id: userId });
+    if (error) { console.warn("supaRetirerInviteActivite:", error.code || error.message); return false; }
+    return data === true;
+  } catch (e) { return false; }
+}
+// Le code du lien d'invitation (organisation seule) ; `renouveler` invalide l'ancien lien.
+async function supaCodeInvitationActivite(eventId, renouveler) {
+  if (!eventId || !window._supaReal || !_compteAuthReel()) return null;
+  try {
+    const { data, error } = await supa.rpc("code_invitation_activite", { p_event_id: eventId, p_renouveler: !!renouveler });
+    if (error) { console.warn("supaCodeInvitationActivite:", error.code || error.message); return null; }
+    return (typeof data === "string" && /^[0-9a-f]{64}$/.test(data)) ? data : null;
+  } catch (e) { return null; }
+}
+// Entrer par un lien d'invitation. `null` = la base n'a pas pu répondre (réseau),
+// `false` = refusé (code faux, renouvelé, activité annulée…), `true` = invité.
+async function supaRejoindreParCode(eventId, code) {
+  if (!eventId || !code || !window._supaReal || !_compteAuthReel()) return null;
+  try {
+    const { data, error } = await supa.rpc("rejoindre_par_code", { p_event_id: eventId, p_code: code });
+    if (error) { console.warn("supaRejoindreParCode:", error.code || error.message); return null; }
+    return data === true;
+  } catch (e) { return null; }
 }
 
 // Édition d'un événement par son organisateur OU un co-organisateur.
@@ -13022,7 +13811,7 @@ function _feedPostsSig(posts) {
     return (posts || []).map(function(p) {
       // Signature = ce qui change l'affichage : le compte affiché (le total
       // serveur, pas la longueur des deux aperçus) et l'aperçu de tête.
-      return p.id + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (((p.comments || [])[0] || {}).id || "") + ":" + ((p.reactions || []).length || 0);
+      return p.id + ":" + (_feedRevisionsAffichees.get(p) || "") + ":" + (p.likes || 0) + ":" + nbCommentairesPost(p) + ":" + (((p.comments || [])[0] || {}).id || "") + ":" + ((p.reactions || []).length || 0);
     }).join("|");
   } catch (e) { return "err" + Date.now(); }
 }
@@ -13124,20 +13913,22 @@ function startFeedRefreshLoop() {
       if (!feedEl || !feedEl.classList.contains("active")) return;
       const degradesAvant = window._filComplementsDegradesSeq || 0;
       const reculAvant = window._filComplementsReculSeq || 0;
-      const posts = await supaLoadPosts(0, null, { generation, propagerErreur: true });
+      let teteServie = 0;
+      const posts = await supaLoadPosts(0, null, { generation, propagerErreur: true, teteServie: seq => { teteServie = seq; } });
       // D14-01 : des compteurs en échec (ou en recul) sont un ÉCHEC du tour, pas
       // un calme ni un succès — le tour suivant recule (`reculSurErreur`).
       if ((window._filComplementsDegradesSeq || 0) !== degradesAvant) echec = true;
       if ((window._filComplementsReculSeq || 0) !== reculAvant) echec = true;
       if (generation !== _feedRefreshGeneration) return;
-      if (posts && posts.length > 0) {
+      if (posts && (posts.length > 0 || (teteServie && teteServie === _feedTeteDerniereServie))) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
+        const avant = state.supabasePosts;
         state.supabasePosts = posts.concat(extra);
         // Re-render UNIQUEMENT si le contenu visible a changé : le rebuild
         // périodique du fil (innerHTML complet) faisait flasher images et
         // stories toutes les 60 s même sans aucune nouveauté.
         const sig = _feedPostsSig(state.supabasePosts);
-        const changed = sig !== window._feedRefreshSig;
+        const changed = sig !== window._feedRefreshSig || sig !== _feedPostsSig(avant);
         window._feedRefreshSig = sig;
         vivant = changed;
         if (changed && feedEl && feedEl.classList.contains("active")) renderFeed();

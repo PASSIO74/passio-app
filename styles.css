@@ -14365,6 +14365,68 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
 /* La rangée de filtres ouverte recouvrait les contrôles lecture/son d une vidéo (relecture du 2026-11-26). */
 .media-editor.me-filtres-ouverts .me-preview-ctrls { visibility: hidden; }
 
+/* ── Activité privée, suite (2026-11-26) : repères et gestion des invités ── */
+.ev-tag-privee { background:rgba(124,58,237,0.12); color:var(--accent, #7c3aed); font-weight:700; }
+.mca-privee { font-size:11px; font-weight:700; color:var(--accent, #7c3aed); margin-top:2px; }
+.ev-invites-privee { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; font-size:13px; color:var(--muted); }
+.ev-lien-renouveler { font-size:12px; margin-top:6px; }
+/* ── STORY : MUSIQUE LIBRE (Openverse, 2026-11-26) ── */
+.me-musique-puces { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 8px; scrollbar-width: none; }
+.me-musique-puces::-webkit-scrollbar { display: none; }
+.me-musique-puces .me-filtre { background: rgba(124,58,237,0.12); color: var(--text, #111); border-color: rgba(124,58,237,0.35); }
+.me-musique-ligne { display: flex; align-items: stretch; gap: 6px; }
+.me-musique-ecoute {
+  flex: 0 0 44px; min-height: 44px; border-radius: 12px; border: none; cursor: pointer;
+  background: var(--accent, #7c3aed); color: #fff; font-size: 16px;
+}
+.me-musique-choix { flex: 1 1 auto; min-width: 0; }
+.me-musique-choix b, .me-musique-choix span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.me-musique-source { margin-top: 8px; font-size: 11px; color: var(--muted, #6b7280); }
+.me-sticker-musique, .story-sticker.st-musique { flex-direction: column; background: rgba(255,255,255,0.92); }
+.me-sticker-musique b, .story-sticker.st-musique b { font-size: 14px; }
+.mc-corps { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.mc-titre { font-size: 17px; font-weight: 800; color: var(--text); }
+.mc-artiste { font-size: 14px; color: var(--muted); }
+.mc-lien { font-size: 14px; font-weight: 700; color: var(--accent, #7c3aed); }
+.mc-source { font-size: 12px; color: var(--muted); }
+/* ═══ Stories « Amis proches » et « À la une » (lot E, 2026-11-26) ═══ */
+/* Anneau VERT d'une story « Amis proches » non vue (Instagram). Plus spécifique
+   que la règle de thème d'app-05 (`.story-ring:not(.seen):not(.create)`). */
+.story-item .story-ring.proches:not(.seen):not(.create) { background: linear-gradient(135deg, #22c55e, #16a34a) !important; }
+.story-proches-pastille { margin-left: auto; margin-right: 6px; padding: 3px 9px; border-radius: 999px; background: #16a34a; color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.me-publier-proches { background: #16a34a; color: #fff; border: 0; }
+.me-amis-proches-lien { border: 0; cursor: pointer; }
+.amis-proches-aide { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+.amis-proches-liste { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 55vh; overflow-y: auto; }
+.amis-proches-ligne { display: flex; align-items: center; gap: 10px; padding: 6px 2px; }
+.amis-proches-avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex: 0 0 auto; }
+.amis-proches-nom { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.amis-proches-bascule { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-card); color: inherit; font-weight: 700; }
+.amis-proches-bascule.on { background: #16a34a; border-color: #16a34a; color: #fff; }
+.amis-proches-vide { color: var(--muted); font-size: 14px; text-align: center; padding: 16px 0; }
+.stories-une { display: flex; gap: 14px; overflow-x: auto; padding: 10px 2px 4px; margin-top: 6px; scrollbar-width: none; }
+.stories-une[hidden] { display: none; }
+.stories-une::-webkit-scrollbar { display: none; }
+.une-bulle { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: 0; padding: 0; color: inherit; flex: 0 0 auto; width: 68px; cursor: pointer; }
+.une-cercle { width: 62px; height: 62px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 24px; color: #fff; box-shadow: inset 0 0 0 2px var(--bg-card); }
+.une-cercle img { width: 100%; height: 100%; object-fit: cover; }
+.une-nouveau .une-cercle { background: var(--bg-card); color: var(--accent); font-size: 28px; font-weight: 700; }
+.une-titre { font-size: 12px; max-width: 68px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.une-choix { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.une-groupe-btn { min-height: 44px; }
+.une-nouveau-titre { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.une-nouveau-titre .input { font-size: 16px; }
+.une-grille { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.une-vignette { aspect-ratio: 9 / 16; border-radius: 12px; border: 0; overflow: hidden; color: #fff; font-weight: 700; font-size: 12px; padding: 6px; display: flex; align-items: center; justify-content: center; text-align: center; }
+.une-vignette img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Rangée de publication de story : « Publier ma story | ⭐ Amis proches | ✎ » (lot E). */
+.me-publier-ligne { display: flex; gap: 8px; align-items: stretch; }
+.me-publier-ligne #mePublishBtn { flex: 1 1 auto; min-width: 0; }
+.me-publier-ligne .me-publier-proches { flex: 0 0 auto; margin-top: 0; }
+.me-publier-ligne .me-amis-proches-lien { flex: 0 0 44px; width: 44px; min-height: 44px; margin: 0; border-radius: 50%; background: rgba(255,255,255,0.16); color: #fff; text-decoration: none; font-size: 18px; }
+
+
 /* ── ✂️ MONTAGE VIDÉO (2026-11-26) — story ET bobine ── */
 .me-tool-montage { display: none; }
 .media-editor.phase-edit.me-video:not(.me-fond) .me-tool-montage { display: inline-flex; }

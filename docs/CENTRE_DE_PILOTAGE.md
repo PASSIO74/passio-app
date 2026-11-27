@@ -20,6 +20,17 @@
   de la semaine, qui est là maintenant, et les 3 derniers arrivés par leur nom. Toucher le nombre
   ouvre TOUS les utilisateurs par leur nom, 100 par page, lus à la demande (action `inscrits`) — le
   nom choisi dans l'app, `profiles.username`, jamais l'e-mail (`comptesRecents`).
+- **À côté, les connectés du jour (2026-11-26).** Les comptes venus depuis minuit, heure de Paris
+  (`debutJourParis`), remis à zéro chaque nuit. Toucher le nombre ouvre la liste par nom, le dernier
+  venu d'abord avec son heure (action `connectes`, lue à la demande). « Venu » = un passage
+  d'ouverture ou de présence en télémétrie (`session/start`, `lifecycle/visible` ou
+  `lifecycle/heartbeat` — le battement compte, car à une ouverture à froid `session/start` part
+  souvent avant que la session soit restaurée, sans identité), `auth_uid` posé par le
+  serveur, trafic robot/émulation/équipe écarté) OU une connexion (`last_sign_in_at`) : la connexion
+  seule ne suffirait pas, une app installée garde sa session des semaines. Mêmes exclusions que le
+  total (`compteCree`) ; aucune migration. Limites : un appareil qui a coupé la télémétrie
+  (`?telemetry=0`) n'est vu que s'il se reconnecte ; au-delà de 20 000 passages dans la journée le
+  nombre est une borne basse et le dit (« + »). Logique : `connectesDuJour`, `nommerConnectes`.
 - **Un problème, un bouton « Régler ».** Le serveur décide de ce que fait le bouton (`gestes[]`,
   `principal`) et le dit en une ligne (`quoi`) : Claude prépare le correctif, mettre en ligne, remettre
   la version d'avant, ouvrir la page du forfait… Aucun problème sans issue (banc ㊴). Une décision

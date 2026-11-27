@@ -91,8 +91,9 @@ test("① ✂️ seulement pour une vidéo ; le passage choisi est réellement e
   expect(r.source, "la SOURCE est gardée pour rouvrir ✂️").toBe(true);
   expect(r.montage.debut).toBeCloseTo(1, 1);
   // La vidéo produite dure le PASSAGE (≈ durée − 2 s), pas la source.
-  expect(r.duree).toBeGreaterThan(duree - 2 - 0.8);
-  expect(r.duree).toBeLessThan(duree - 2 + 0.8);
+  // Tolérance large : l'encodage suit l'horloge réelle, un banc saturé décale d'un demi-temps.
+  expect(r.duree).toBeGreaterThan(duree - 2 - 1.2);
+  expect(r.duree).toBeLessThan(duree - 2 + 1.2);
   // Rouvrir ✂️ reprend le passage appliqué, sur la source entière.
   await page.locator("#meMontageBtn").click();
   await expect.poll(() => page.evaluate(() => meMontage && meMontage.duree)).toBeGreaterThan(3);

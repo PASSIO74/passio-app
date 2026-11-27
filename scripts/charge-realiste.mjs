@@ -1,20 +1,30 @@
 #!/usr/bin/env node
 // Banc authentifié borné, staging exclusivement. Sans --executer : aucun réseau.
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { homedir } from "node:os";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { randomUUID, createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { verdictReponse } from "./charge-verdict.mjs";
+import PassioCartesFil from "../js/fil-cartes.js";
 import { optionsBanc, emailCapacite, abonnements, actionPrevue, pausePrevue, decalageInitial,
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
   PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas, decalageInitialCompteurs, familleFrameRealtime,
   partenaire, clePaire, comptesPourPalier, Budget, LIMITES, statistiques, mixObserve, verdictAvecCompteurs, Sondes } from "./lib/charge-realiste.mjs";
 
 const sleep = ms => new Promise(resolveSleep => setTimeout(resolveSleep, ms));
+// Le minuteur réel peut être réveillé par un « j’aime » confirmé pendant son attente.
+function attendreCompteurs(ms, compte) {
+  return new Promise(resolve => {
+    const finir = () => { clearTimeout(timer); delete compte.interrompreAttente; resolve(); };
+    const timer = setTimeout(finir, ms);
+    compte.interrompreAttente = finir;
+  });
+}
 const octets = value => Buffer.byteLength(value, "utf8");
 const liste = ids => `in.(${ids.join(",")})`;
-const colonnesFil = "id,author_id,passion_id,mood,content,media_url,created_at,is_reel,overlays,vlog,shared_from_post_id,shared_data,event_id,profiles!author_id(username,emoji,color,avatar_url,is_private)";
+const colonnesFil = "id,author_id,passion_id,mood,content,media_url,created_at,edited_at,is_reel,overlays,vlog,shared_from_post_id,shared_data,event_id,profiles!author_id(username,emoji,color,avatar_url,is_private)";
 const motifSur = e => /^[A-Z][A-Z0-9_: ]{0,100}$/.test(e?.message || "") ? e.message : "ERREUR_INTERNE_OU_RESEAU";
 const attendreTableau = (min = 1, champs = ["id"]) => ({ tableau: true, min, champs });
 export async function verifierPublicationLue(id, publier, lire) {
@@ -30,6 +40,8 @@ export async function executer(options) {
   const o = optionsBanc(["--projet", options.projet, "--paliers", options.paliers.join(","),
     "--duree", String(options.duree), "--graine", String(options.graine), "--scenario", options.scenario,
     "--pages", options.pages.join(","), "--profil-realtime", options.profilRealtime || PROFIL_REALTIME,
+    ...(options.fraicheurLikes ? ["--fraicheur-likes", options.fraicheurLikes] : []),
+    ...(options.lectureCartes ? ["--lecture-cartes", options.lectureCartes] : []),
     ...(options.compteursCadence ? ["--compteurs-cadence", options.compteursCadence] : []),
     ...(options.prevolSeulement ? ["--prevol"] : []), ...(options.executer ? ["--executer", "--sortie", options.sortie] : [])]);
   if (!o.executer) return { plan: true, ...o };
@@ -46,9 +58,10 @@ export async function executer(options) {
   const receptionsSonde = new Map();
   let connexionsMax = 0, prochaineMutation = 0;
   let phase = "preparation", arret = null, cleAnon, cleService, stage = null, fermetureVoulue = false;
-  const rapport = { version: 2, date: new Date().toISOString(), options: o, campagne: prefix,
+  const rapport = { version: 7, date: new Date().toISOString(), options: o, campagne: prefix,
     portee: "API authentifiee + Realtime, pas un test navigateur ni une certification production",
-    cheminFil: "rpc/fil_compteurs + auteurs et interactions des apercus ; aucun repli legacy",
+    cheminFil: "rpc/fil_compteurs + auteurs et rpc/interactions_cibles des apercus",
+    cheminCompteursVisibles: "rpc/fil_likes_visibles",
     comparaisonDemandee: o.pages.length === 2,
     limitesMesure: ["Octets applicatifs HTTP et WebSocket emis/recus, hors en-tetes, TLS et compression ; pas la facture egress.",
       "Frames Realtime observees cote clients ; le compteur ne remplace pas Usage Supabase.",
@@ -56,7 +69,9 @@ export async function executer(options) {
       "Le mix observe distingue actions, appels HTTP et cycles de compteurs ; ni commentaires ecrits, ni RSVP, reconnexion ou plusieurs sessions d'un compte.",
       "Sans CDC : publications confirmees par lecture JWT destinataire ; messages prives par Realtime.",
       "Trois compteurs de posts visibles par acteur ; le canal ring des appels (troisieme canal produit) n'est pas exerce.",
-      "Les HEAD count=exact sont comptes comme requetes et en latence ; leurs en-tetes ne sont pas inclus dans les octets applicatifs.",
+      "Les compteurs visibles utilisent un POST groupe par cycle, avec le JWT du lecteur, sans repli.",
+      "Cache profils vide au debut de la campagne, par compte, duree 120 s dans les deux variantes ; les quatre comptes echauffes le conservent.",
+      "Fraicheur likes : fil = valeur lue par fil_compteurs valable 15 s depuis le depart de la lecture ; independante = RPC compteurs meme si le fil vient de les lire.",
       "L'etat adaptatif des compteurs est conserve entre paliers ; son etat initial est compte avant chaque mesure, sans reinitialisation.",
       "Duree mesuree par horloges monotone et murale : une prolongation au-dela de la duree demandee + 15 s invalide la preuve, sans attribuer la cause au serveur.",
       o.pages.length === 2 ? "60/20 compare deux tailles de page sur le meme jeu, pas deux builds de l'application."
@@ -66,15 +81,22 @@ export async function executer(options) {
     phase = nom;
     rapport.phases.push({ phase: nom, palier: stage?.taille ?? null, page: stage?.page ?? null,
       date: new Date().toISOString(), depuisDebutMs: Date.now() - debut });
+    sauvegarder();
   }
-  function sauvegarder() {
+  function sauvegarder(complet = true) {
+    // Le manifeste est durable AVANT chaque mutation. Le rapport complet est
+    // sérialisé aux transitions, hors chronométrage des actions.
+    const manifeste = destination + ".manifest.json";
+    writeFileSync(manifeste + ".tmp", JSON.stringify({ projet: o.projet, campagne: prefix,
+      comptes: comptes.map(c => c.id), emailsSynthetiquesAttendus: emailsAttendus, profils: profilsFixture, posts: [...postsFixture.map(p => p.id), ...mutationsPosts],
+      conversations: convs.map(c => c.id), evenements: events.map(e => e.id), likesMutations: [...mutationsLikes.values()], nettoyage: rapport.nettoyage }), { flush: true });
+    renameSync(manifeste + ".tmp", manifeste);
+    if (!complet) return;
     rapport.budget = budget.resume(); rapport.budgetNettoyage = nettoyageBudget?.resume() ?? null;
     rapport.dureeTotaleMs = Date.now() - debut;
     rapport.mixObserve = mixObserve(mesures);
-    writeFileSync(destination, JSON.stringify({ ...rapport, mesures }, null, 2));
-    writeFileSync(destination + ".manifest.json", JSON.stringify({ projet: o.projet, campagne: prefix,
-      comptes: comptes.map(c => c.id), emailsSynthetiquesAttendus: emailsAttendus, profils: profilsFixture, posts: [...postsFixture.map(p => p.id), ...mutationsPosts],
-      conversations: convs.map(c => c.id), evenements: events.map(e => e.id), likesMutations: [...mutationsLikes.values()], nettoyage: rapport.nettoyage }, null, 2));
+    writeFileSync(destination + ".tmp", JSON.stringify({ ...rapport, mesures }, null, 2));
+    renameSync(destination + ".tmp", destination);
   }
   function stop(motif) {
     arret ||= motif;
@@ -91,11 +113,12 @@ export async function executer(options) {
     try { (phase === "nettoyage" ? nettoyageBudget : budget).compter(q); }
     catch (e) { if (phase !== "nettoyage") stop(motifSur(e)); throw e; }
   }
-  async function requete(nom, chemin, { methode = "GET", corps, jwt = cleService, attentes = attendreTableau(), extra = {}, management = false, phaseMesure = phase } = {}) {
+  async function requete(nom, chemin, { methode = "GET", corps, jwt = cleService, attentes = attendreTableau(), valider, acteur, extra = {}, management = false, phaseMesure = phase } = {}) {
     const depart = performance.now(), controller = new AbortController();
     let etapeRequete = "PREPARATION";
     const current = { phase: phaseMesure, palier: stage?.taille ?? null, page: stage?.page ?? null, famille: nom, type: "http", ok: false, motif: null, ms: 0, octets: 0, status: null,
       date: new Date().toISOString(), depuisDebutMs: Date.now() - debut, methode };
+    if (Number.isInteger(acteur)) current.compte = acteur;
     const body = corps === undefined ? undefined : JSON.stringify(corps);
     controleurs.add(controller);
     const timer = setTimeout(() => {
@@ -133,8 +156,10 @@ export async function executer(options) {
       const verdict = verdictReponse(res.status, texte, attentes);
       // Le rapport contient un code stable, jamais un corps d'erreur distant.
       if (!verdict.ok) throw new Error(res.ok ? "CONTENU_INATTENDU" : `HTTP_${res.status}`);
+      const valeur = texte.trim() ? JSON.parse(texte) : null;
+      const resultat = valider ? valider(valeur) : valeur;
       current.ok = true;
-      return texte.trim() ? JSON.parse(texte) : null;
+      return resultat;
     } catch (e) {
       current.diagnosticTransport = { etape: etapeRequete,
         interruption: originesInterruption.get(controller) || "AUCUNE", signalInterrompu: controller.signal.aborted };
@@ -146,9 +171,23 @@ export async function executer(options) {
     }
   }
   const rest = (nom, table, params = {}, opt = {}) => requete(nom, `/rest/v1/${table}?${new URLSearchParams(params)}`, opt);
-  const compterLikes = (compte, postId, nom = "compteur_like_visible") => rest(nom, "post_likes",
-    { select: "post_id", post_id: `eq.${postId}` },
-    { jwt: compte.jwt, methode: "HEAD", extra: { Prefer: "count=exact" } });
+  function lireLikesVisibles(compte, ids, nom = "fil_likes_visibles") {
+    return rest(nom, "rpc/fil_likes_visibles", {}, {
+      jwt: compte.jwt, acteur: compte.index, methode: "POST", corps: { _post_ids: ids },
+      attentes: attendreTableau(ids.length, ["post_id", "likes"]),
+      valider: lignes => {
+        const compteurs = new Map();
+        for (const ligne of lignes) {
+          if (!ids.includes(ligne.post_id) || compteurs.has(ligne.post_id)
+              || Object.keys(ligne).length !== 2 || !Number.isSafeInteger(ligne.likes) || ligne.likes < 0)
+            throw new Error("COMPTEUR_VISIBLE_INVALIDE");
+          compteurs.set(ligne.post_id, ligne.likes);
+        }
+        if (compteurs.size !== ids.length) throw new Error("COMPTEUR_VISIBLE_INVALIDE");
+        return compteurs;
+      }
+    });
+  }
   async function cadencer(table, methode) {
     const maintenant = performance.now(), depart = Math.max(maintenant, prochaineMutation);
     prochaineMutation = depart + delaiFixture(table, methode, connexionsMax);
@@ -201,10 +240,10 @@ export async function executer(options) {
     for (let i = 0; i < o.comptesDistincts; i++) {
       if (i) await sleep(2250); // <= 134 logins / 5 min, sans relance en boucle sur 429.
       const password = randomUUID() + "aA!7", email = emailCapacite(prefix, i);
-      emailsAttendus.push(email); sauvegarder();
+      emailsAttendus.push(email); sauvegarder(false);
       const user = await requete("fixture_auth_creation", "/auth/v1/admin/users", { methode: "POST", jwt: cleService,
         corps: { email, password, email_confirm: true }, attentes: { objet: true, champs: ["id"] } });
-      const compte = { id: user.id, index: i }; comptes.push(compte); sauvegarder();
+      const compte = { id: user.id, index: i }; comptes.push(compte); sauvegarder(false);
       const session = await requete("fixture_auth_login", "/auth/v1/token?grant_type=password", { methode: "POST", jwt: cleAnon,
         corps: { email, password }, attentes: { objet: true, champs: ["access_token", "user"] } });
       if (session.user.id !== compte.id) throw new Error("IDENTITE_AUTH_INATTENDUE");
@@ -336,8 +375,23 @@ export async function executer(options) {
   }
   async function fil(compte, page) {
     const jwt = compte.jwt;
-    const posts = await rest("fil_posts", "posts", { select: colonnesFil, order: "created_at.desc,id.desc", limit: String(page) }, { jwt, attentes: { ...attendreTableau(page, ["id", "author_id"]), imbrique: "profiles" } });
+    async function appeler(versions) {
+      const data = await rest("fil_cartes_page", "rpc/fil_cartes_page", {}, { jwt, acteur: compte.index,
+        methode: "POST", corps: { _versions: versions }, attentes: attendreTableau(page, ["post_id", "version"]) });
+      mesures.push({ phase, palier: stage?.taille, page, type: "page_fil", famille: "versions",
+        cartes: data.length, reutilisees: data.filter(r => r.carte === null).length });
+      return { data };
+    }
+    const resultat = o.lectureCartes === "rpc" && page === 20
+      ? await PassioCartesFil.lire(appeler, compte.cacheCartes)
+      : { data: await rest("fil_posts", "posts", { select: colonnesFil, order: "created_at.desc,id.desc", limit: String(page) },
+          { jwt, acteur: compte.index, attentes: { ...attendreTableau(page, ["id", "author_id"]), imbrique: "profiles" } }) };
+    if (resultat.error) throw new Error(resultat.error.code);
+    const posts = resultat.data;
+    if (posts.length !== page || new Set(posts.map(p => p.id)).size !== page || posts.some(p => !p.author_id))
+      throw new Error("PAGE_FIL_INCOMPLETE");
     const ids = posts.map(p => p.id);
+    const debutCompteurs = performance.now();
     const compteurs = await rest("fil_compteurs", "rpc/fil_compteurs", {}, { jwt, methode: "POST", corps: { _post_ids: ids },
       attentes: attendreTableau(ids.length, ["post_id", "likes", "aime", "commentaires", "apercus", "reactions"]) });
     const visibles = new Set(ids), parPost = new Map(), commentaires = [];
@@ -368,68 +422,119 @@ export async function executer(options) {
       }
     }
     const auteurs = [...new Set(commentaires.map(c => c.author_id))], idsApercus = commentaires.map(c => c.id);
+    // Comme _resolveProfilesByIds, le cache appartient à ce seul lecteur.
+    const cacheProfils = compte.cacheProfils ||= new Map();
+    const maintenant = performance.now();
+    const manquants = auteurs.filter(id => !(cacheProfils.get(id) > maintenant));
     const lots = await Promise.allSettled([
-      auteurs.length ? rest("fil_profils_commentaires", "profiles", { select: "id,username,emoji,color,avatar_url,passion_id,passions,bio", id: liste(auteurs) },
-        { jwt, attentes: attendreTableau(auteurs.length, ["id", "username"]) }) : [],
-      idsApercus.length ? rest("fil_interactions_apercus", "comment_interactions",
-        { select: "id,comment_id,post_id,user_id,kind,payload,created_at", comment_id: liste(idsApercus), order: "created_at.asc" },
-        { jwt, attentes: attendreTableau(0, ["id", "comment_id", "user_id"]) }) : [],
+      manquants.length ? rest("fil_profils_commentaires", "profiles", { select: "id,username,emoji,color,avatar_url,passion_id,passions,bio", id: liste(manquants) },
+        { jwt, attentes: attendreTableau(manquants.length, ["id", "username"]) }) : [],
+      idsApercus.length ? rest("fil_interactions_apercus", "rpc/interactions_cibles", {}, {
+        jwt, methode: "POST", corps: { _comment_ids: idsApercus, _kinds: null, _limite: 1000 },
+        attentes: attendreTableau(0, ["id", "comment_id", "user_id"]) }) : [],
     ]);
     const refus = lots.find(r => r.status === "rejected");
     if (refus) throw refus.reason;
     const [profils, interactions] = lots.map(r => r.value);
     if (interactions.some(c => !idsApercus.includes(c.comment_id))) throw new Error("INTERACTION_HORS_APERCUS");
-    if (phase === "mesure") compte.postsVisibles = ids.slice(0, LIKES_VISIBLES.maximum);
+    const trouves = new Set(profils.map(p => p.id));
+    if (profils.length !== manquants.length || manquants.some(id => !trouves.has(id))) throw new Error("PROFILS_APERCUS_INATTENDUS");
+    const expiration = performance.now() + 120000;
+    for (const p of profils) cacheProfils.set(p.id, expiration);
+    if (phase === "mesure" || phase === "echauffement") {
+      compte.postsVisibles = ids.slice(0, LIKES_VISIBLES.maximum);
+      compte.likesAffiches = new Map(compte.postsVisibles.map(id => [id, parPost.get(id).likes]));
+      if (o.fraicheurLikes === "fil") {
+        compte.likesDuFil = new Map(compte.postsVisibles.map(id => [id, debutCompteurs + LIKES_VISIBLES.fraicheurMs]));
+      }
+    }
+    if (page === 20) compte.cacheCartes = resultat.cache;
     return { posts: ids, likes: compteurs.reduce((n, c) => n + c.likes, 0),
       commentaires: compteurs.reduce((n, c) => n + c.commentaires, 0), apercus: commentaires.length,
-      reactions: compteurs.reduce((n, c) => n + c.reactions.length, 0), profils: profils.length, interactionsApercus: interactions.length };
+      reactions: compteurs.reduce((n, c) => n + c.reactions.length, 0), profils: auteurs.length, interactionsApercus: interactions.length };
   }
-  async function cycleCompteursVisibles(compte, fin, pasMs) {
+  async function cycleCompteursVisibles(compte, pasMs, ids) {
     const debutCycle = performance.now(), date = new Date().toISOString(); let ok = false, motif = null, lectures = 0;
     // « Vivant » comme dans le produit : un compteur qui change, une erreur, ou
     // une carte jamais relue par ce compte. Le premier cycle est donc vivant.
     let vivant = false;
     compte.derniersComptes = compte.derniersComptes || new Map();
     try {
-      const ids = [...new Set(compte.postsVisibles)].slice(0, LIKES_VISIBLES.maximum);
-      if (ids.length !== LIKES_VISIBLES.maximum) throw new Error("POSTS_VISIBLES_INSUFFISANTS");
-      for (const id of ids) {
-        if (arret || performance.now() >= fin) break;
-        const n = await compterLikes(compte, id); lectures++;
-        if (!compte.derniersComptes.has(id) || compte.derniersComptes.get(id) !== n) vivant = true;
+      if (new Set(compte.postsVisibles).size < LIKES_VISIBLES.maximum) throw new Error("POSTS_VISIBLES_INSUFFISANTS");
+      const compteurs = await lireLikesVisibles(compte, ids);
+      lectures = compteurs.size;
+      for (const [id, n] of compteurs) {
+        const affiche = compte.likesAffiches?.get(id) ?? compte.derniersComptes.get(id);
+        if (!compte.derniersComptes.has(id) || affiche !== n) vivant = true;
+        if (compte.likesAffiches?.has(id)) compte.likesAffiches.set(id, n);
         compte.derniersComptes.set(id, n);
       }
       ok = true;
     } catch (e) { motif = motifSur(e); vivant = true; }
-    mesures.push({ phase, palier: stage?.taille, page: stage?.page, type: "parcours", famille: "compteurs_visibles",
-      date, compte: compte.index, ok, motif, lectures, vivant, pasMs: pasMs ?? LIKES_VISIBLES.fraicheurMs, ms: Math.round(performance.now() - debutCycle) });
-    if (!ok && ["HTTP_401", "HTTP_403", "HTTP_429", "HEAD_COMPTE_INVALIDE", "POSTS_VISIBLES_INSUFFISANTS"].includes(motif)) stop(motif);
-    return vivant;
+    const mesure = { phase, palier: stage?.taille, page: stage?.page, type: "parcours", famille: "compteurs_visibles",
+      date, compte: compte.index, ok, motif, lectures, vivant, pasMs: pasMs ?? LIKES_VISIBLES.fraicheurMs, ms: Math.round(performance.now() - debutCycle) };
+    mesures.push(mesure);
+    if (!ok && ["HTTP_401", "HTTP_403", "HTTP_429", "HTTP_404", "CONTENU_INATTENDU", "COMPTEUR_VISIBLE_INVALIDE", "POSTS_VISIBLES_INSUFFISANTS"].includes(motif)) stop(motif);
+    return mesure;
   }
-  async function surveillerCompteurs(compte, start, fin) {
+  async function surveillerCompteurs(compte, start, fin, attendre = sleep) {
     let tour = 0, pas = LIKES_VISIBLES.fraicheurMs, prochainDebut = start + decalageInitialCompteurs(o.graine, compte.index);
-    while (!arret && prochainDebut < fin) {
-      await sleep(Math.max(0, Math.min(prochainDebut, fin) - performance.now()));
-      if (arret || performance.now() >= fin) break;
-      const debutCycle = performance.now();
-      const vivant = await cycleCompteursVisibles(compte, fin, pas);
-      // Cadence entre débuts ; un cycle lent ne provoque jamais un rattrapage
-      // de cycles manqués ni des HEAD parallèles pour le même compte. En
-      // cadence adaptative, le pas du prochain cycle se décide sur celui-ci,
-      // comme dans le produit (`compteursProchainPas`, app-03).
-      const pause = o.compteursCadence === "adaptative"
-        ? pauseCompteursAdaptative(o.graine, compte.index, tour, pas = compteursProchainPas(pas, vivant))
-        : pauseCompteurs(o.graine, compte.index, tour);
-      tour++;
-      prochainDebut = Math.max(performance.now(), debutCycle + pause);
-    }
+    let enCours = false, reveilEnCours = false;
+    compte.reveillerCompteurs = () => {
+      const maintenant = performance.now();
+      mesures.push({ phase, palier: stage?.taille, page: stage?.page, type: "horloge", famille: "reveil_like",
+        compte: compte.index, instantMs: Math.round(maintenant - start), pendantLecture: enCours });
+      pas = LIKES_VISIBLES.fraicheurMs;
+      if (enCours) { reveilEnCours = true; return; }
+      const plafond = maintenant + pas + LIKES_VISIBLES.jitterMs;
+      if (plafond < prochainDebut) {
+        prochainDebut = plafond;
+        compte.interrompreAttente?.();
+      }
+    };
+    try {
+      while (!arret && performance.now() < fin) {
+        // Rester à l'écoute jusqu'à la fin : une mutation peut rapprocher une échéance initialement hors palier.
+        await attendre(Math.max(0, Math.min(prochainDebut, fin) - performance.now()), compte);
+        const debutCycle = performance.now();
+        if (arret || debutCycle >= fin) break;
+        if (debutCycle < prochainDebut) continue;
+        const prevu = prochainDebut;
+        const visibles = [...new Set(compte.postsVisibles)].slice(0, LIKES_VISIBLES.maximum);
+        const ids = visibles.filter(id => !(compte.likesDuFil?.get(id) > debutCycle));
+        let trace;
+        if (ids.length < visibles.length) {
+          trace = { phase, palier: stage?.taille, page: stage?.page, type: "cache", famille: "likes_du_fil",
+            compte: compte.index, cartes: visibles.length - ids.length, appelEvite: ids.length === 0 };
+          mesures.push(trace);
+        }
+        if (!ids.length && visibles.length === LIKES_VISIBLES.maximum) {
+          const expiration = Math.min(...visibles.map(id => compte.likesDuFil.get(id)));
+          prochainDebut = Math.max(expiration, debutCycle + 200);
+        } else {
+          enCours = true;
+          trace = await cycleCompteursVisibles(compte, pas, ids);
+          enCours = false;
+          const vivant = trace.vivant || reveilEnCours;
+          reveilEnCours = false;
+          const pause = o.compteursCadence === "adaptative"
+            ? pauseCompteursAdaptative(o.graine, compte.index, tour, pas = compteursProchainPas(pas, vivant))
+            : pauseCompteurs(o.graine, compte.index, tour);
+          tour++;
+          prochainDebut = Math.max(performance.now() + 200, debutCycle + pause);
+        }
+        trace.prevuMs = Math.round(prevu - start);
+        trace.debutMs = Math.round(debutCycle - start);
+        trace.suivantMs = Math.round(prochainDebut - start);
+      }
+    } finally { delete compte.reveillerCompteurs; }
   }
   function convPour(compte, taille) { return convs.find(c => c.id === `${prefix}_conv_${clePaire(compte.index, partenaire(compte.index, taille))}`); }
   async function livraison(compte, taille, type) {
     const id = `${prefix}_mesure_${randomUUID()}`, recipient = comptes[partenaire(compte.index, taille)];
     if (type === "post" && o.profilRealtime === "sans-cdc") {
       const debutLecture = performance.now();
-      mutationsPosts.add(id); sauvegarder();
+      mutationsPosts.add(id); sauvegarder(false);
       try {
         const resultat = await verifierPublicationLue(id,
           () => inserer("post_publier", "posts", { id, author_id: compte.id, passion_id: postsFixture[0].passion_id,
@@ -453,7 +558,7 @@ export async function executer(options) {
       if (type === "message") await inserer("message_envoyer", "conv_messages", { id, conv_id: convPour(compte, taille).id,
         from_id: compte.id, content: "Message de capacite entre deux comptes authentifies.", created_at: new Date().toISOString() }, { jwt: compte.jwt, attentes: { ...attendreTableau(), id } });
       else {
-        mutationsPosts.add(id); sauvegarder();
+        mutationsPosts.add(id); sauvegarder(false);
         await inserer("post_publier", "posts", { id, author_id: compte.id, passion_id: postsFixture[0].passion_id,
           content: "Publication de capacite.", created_at: new Date().toISOString() }, { jwt: compte.jwt, attentes: { ...attendreTableau(), id } });
       }
@@ -489,10 +594,18 @@ export async function executer(options) {
           { jwt, extra: { Prefer: "resolution=merge-duplicates,return=representation" } });
       } else if (nom === "aimer") {
         const postId = postPourLike(postsFixture, compte.index, tour, comptes.length);
+        compte.likesDuFil?.delete(postId);
         await aimerEtRetirer({ post_id: postId, user_id: compte.id }, mutationsLikes,
-          cle => { sauvegarder(); return inserer("aimer", "post_likes", cle, { jwt }); },
-          cle => rest("retirer_like", "post_likes", { post_id: `eq.${cle.post_id}`, user_id: `eq.${cle.user_id}` },
-            { jwt, methode: "DELETE", extra: { Prefer: "return=representation" }, attentes: attendreTableau(1, ["post_id", "user_id"]) }));
+          async cle => {
+            sauvegarder(false);
+            await inserer("aimer", "post_likes", cle, { jwt, acteur: compte.index });
+            compte.reveillerCompteurs?.();
+          },
+          async cle => {
+            await rest("retirer_like", "post_likes", { post_id: `eq.${cle.post_id}`, user_id: `eq.${cle.user_id}` },
+              { jwt, acteur: compte.index, methode: "DELETE", extra: { Prefer: "return=representation" }, attentes: attendreTableau(1, ["post_id", "user_id"]) });
+            compte.reveillerCompteurs?.();
+          });
       }
       ok = true;
     } catch (e) { motif = motifSur(e); }
@@ -538,25 +651,26 @@ export async function executer(options) {
   async function prevolCompteurLikes() {
     const auteur = comptes[0], destinataire = comptes[1];
     const postId = postPourLike(postsFixture, auteur.index, 0, comptes.length);
-    const avant = await compterLikes(destinataire, postId, "prevol_compteur_avant");
+    const lire = async nom => (await lireLikesVisibles(destinataire, [postId], nom)).get(postId);
+    const avant = await lire("prevol_compteur_avant");
     if (avant !== 1) throw new Error("COMPTEUR_BASELINE_INATTENDU");
     const cle = { post_id: postId, user_id: auteur.id }, key = `${postId}:${auteur.id}`;
     mutationsLikes.set(key, cle); sauvegarder();
     let ajoute;
     try {
       await inserer("prevol_like_persistant", "post_likes", cle, { jwt: auteur.jwt });
-      ajoute = await compterLikes(destinataire, postId, "prevol_compteur_ajoute");
+      ajoute = await lire("prevol_compteur_ajoute");
       if (ajoute !== avant + 1) throw new Error("COMPTEUR_AJOUT_NON_VISIBLE");
     } finally {
       await rest("prevol_like_retrait", "post_likes", { post_id: `eq.${postId}`, user_id: `eq.${auteur.id}` },
         { jwt: auteur.jwt, methode: "DELETE", extra: { Prefer: "return=representation" }, attentes: attendreTableau(1, ["post_id", "user_id"]) });
       mutationsLikes.delete(key); sauvegarder();
     }
-    const retire = await compterLikes(destinataire, postId, "prevol_compteur_retire");
+    const retire = await lire("prevol_compteur_retire");
     if (retire !== avant) throw new Error("COMPTEUR_RETRAIT_NON_VISIBLE");
     return { avant, ajoute, retire, lecture: "jwt_destinataire", persistantJusquaLecture: true };
   }
-  async function palier(taille, page, empreinteAttendue) {
+  async function palier(taille, page, empreinteAttendue, retardBoucle, attendre) {
     const selection = comptesPourPalier(comptes, taille);
     for (const c of selection) c.postsVisibles = postsFixture.slice(-LIKES_VISIBLES.maximum).reverse().map(p => p.id);
     stage = { taille, page };
@@ -570,6 +684,11 @@ export async function executer(options) {
       changerPhase("echauffement"); const debutChauffe = performance.now();
       for (const c of selection.slice(0, 4)) await fil(c, page);
       const chauffeMs = Math.round(performance.now() - debutChauffe);
+      const departCaches = performance.now();
+      const cacheInitial = {
+        avecProfilFrais: selection.filter(c => c.cacheProfils && [...c.cacheProfils.values()].some(fin => fin > departCaches)).length,
+        avecLikeFrais: selection.filter(c => c.postsVisibles.some(id => c.likesDuFil?.get(id) > departCaches)).length
+      };
       const etatInitialCompteurs = selection.reduce((etat, c) => {
         const ids = [...new Set(c.postsVisibles)].slice(0, LIKES_VISIBLES.maximum);
         const connus = ids.filter(id => c.derniersComptes?.has(id)).length;
@@ -578,7 +697,9 @@ export async function executer(options) {
         else etat.partiels++;
         return etat;
       }, { conservationEntrePaliers: true, froids: 0, partiels: 0, chauds: 0 });
-      changerPhase("mesure"); const start = performance.now(), debutMural = Date.now(), debutMesures = mesures.length, fin = start + o.duree * 1000;
+      changerPhase("mesure");
+      retardBoucle?.enable();
+      const start = performance.now(), debutMural = Date.now(), debutMesures = mesures.length, fin = start + o.duree * 1000;
       const borneDure = setTimeout(() => { if (controleurs.size) stop("DUREE_PALIER_180_S"); }, 180000);
       const parcoursActeurs = selection.map(async c => {
         await sleep(decalageInitial(o.graine, c.index)); let tour = 0;
@@ -588,39 +709,52 @@ export async function executer(options) {
           await sleep(Math.min(pausePrevue(o.graine, c.index, tour++), restants));
         }
       });
-      await Promise.all([...parcoursActeurs, ...selection.map(c => surveillerCompteurs(c, start, fin))]);
+      await Promise.all([...parcoursActeurs, ...selection.map(c => surveillerCompteurs(c, start, fin, attendre))]);
+      retardBoucle?.disable();
       clearTimeout(borneDure);
       const dureeMs = Math.round(performance.now() - start), dureeMuraleMs = Date.now() - debutMural;
       const subset = mesures.slice(debutMesures).filter(m => m.phase === "mesure");
       const http = statistiques(subset.filter(m => m.type === "http")), parcours = statistiques(subset.filter(m => m.type === "parcours")), realtime = statistiques(subset.filter(m => m.type === "realtime"));
       const messages = statistiques(subset.filter(m => m.type === "realtime" && m.famille === "message"));
       const publications = statistiques(subset.filter(m => (m.type === "lecture" || m.type === "realtime") && m.famille === "post"));
-      const httpCompteurs = statistiques(subset.filter(m => m.type === "http" && m.methode === "HEAD"));
-      const httpPrincipal = statistiques(subset.filter(m => m.type === "http" && m.methode !== "HEAD"));
+      const httpCompteurs = statistiques(subset.filter(m => m.type === "http" && m.famille === "fil_likes_visibles"));
+      const httpPrincipal = statistiques(subset.filter(m => m.type === "http" && m.famille !== "fil_likes_visibles"));
       const parcoursCompteurs = statistiques(subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles"));
       const parcoursPrincipaux = statistiques(subset.filter(m => m.type === "parcours" && m.famille !== "compteurs_visibles"));
+      const cachesComplets = subset.filter(m => m.type === "cache" && m.appelEvite && m.cartes === LIKES_VISIBLES.maximum);
+      const preuvePrevol = rapport.prevol?.compteursLikes;
+      const preuveCache = {
+        depuisFil: o.fraicheurLikes === "fil",
+        prevolValide: rapport.prevol?.ok === true && preuvePrevol?.avant === 1 && preuvePrevol.ajoute === 2 && preuvePrevol.retire === 1,
+        comptesAvecTroisCartesFraiches: new Set(cachesComplets.map(m => m.compte)).size
+      };
       const verdict = verdictAvecCompteurs({ http: httpPrincipal, parcours: parcoursPrincipaux, realtime, messages, posts: publications, connectes,
         attendus: taille, termine: !arret && dureeMs >= o.duree * 1000, fatal: arret, scenario: o.scenario,
-        dureeAttendueMs: o.duree * 1000, dureeMs, dureeMuraleMs }, httpCompteurs, parcoursCompteurs);
+        dureeAttendueMs: o.duree * 1000, dureeMs, dureeMuraleMs, echantillonsCompteurs: subset, graine: o.graine }, httpCompteurs, parcoursCompteurs, preuveCache);
       const resultat = { taille, comptesDistincts: new Set(selection.map(c => c.id)).size, page, empreinte,
         connectes, handlersParSocket: abonnements(selection[0].id, o.profilRealtime).length, canauxParSocket: abonnements(selection[0].id, o.profilRealtime).length ? 2 : 1,
         profilRealtime: o.profilRealtime, connexionMs: Math.round(debutChauffe - debutConnexion), echauffementMs: chauffeMs, comptesEchauffement: Math.min(4, taille),
         dureeMs, dureeMuraleMs, validiteMesure: verdict.validiteMesure,
+        boucleGenerateur: retardBoucle?.count ? { resolutionMs: 20, echantillons: retardBoucle.count,
+          p95Ms: Math.round(retardBoucle.percentile(95) / 1e6), p99Ms: Math.round(retardBoucle.percentile(99) / 1e6),
+          maxMs: Math.round(retardBoucle.max / 1e6) } : null,
         http, parcours, httpPrincipal, httpCompteurs, parcoursPrincipaux, parcoursCompteurs, realtime, messages, publications,
         mixObserve: mixObserve(subset),
-        compteursVisibles: { ...LIKES_VISIBLES, cadence: "entre_debuts", politique: o.compteursCadence, coalescenceAvecFil: false,
-          etatInitial: etatInitialCompteurs,
+        compteursVisibles: { ...LIKES_VISIBLES, cadence: "entre_debuts", politique: o.compteursCadence, coalescenceAvecFil: o.fraicheurLikes === "fil",
+          cartesReutilisees: subset.filter(m => m.type === "cache").reduce((n, m) => n + m.cartes, 0),
+          rappelsEntiersEvites: subset.filter(m => m.type === "cache" && m.appelEvite).length,
+          etatInitial: etatInitialCompteurs, cacheInitial, preuveCache,
           cycles: subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles").length,
           cyclesCalmes: subset.filter(m => m.type === "parcours" && m.famille === "compteurs_visibles" && m.vivant === false).length,
-          headParPersonne: taille ? Number((subset.filter(m => m.type === "http" && m.methode === "HEAD").length / taille).toFixed(2)) : 0,
+          appelsGroupesParPersonne: Number((httpCompteurs.tentatives / taille).toFixed(2)),
           portee: "3 premiers posts de la derniere page, visibles pendant toute la mesure ; GET fil ne certifie pas un compte exact" },
         livraisonRealtimeQualifiee: verdict.validiteMesure.ok && o.scenario === "complet" && messages.succes > 0 && messages.erreurs === 0,
-        familles: Object.fromEntries([...new Set(subset.map(m => `${m.type}:${m.famille}`))].map(key => [key, statistiques(subset.filter(m => `${m.type}:${m.famille}` === key))])),
+        familles: Object.fromEntries([...new Set(subset.filter(m => m.type !== "cache" && m.type !== "horloge").map(m => `${m.type}:${m.famille}`))].map(key => [key, statistiques(subset.filter(m => `${m.type}:${m.famille}` === key))])),
         framesRealtime: Object.values(rapport.framesRealtime).filter(f => f.phase === "mesure" && f.palier === taille && f.page === page), verdict };
       rapport.paliers.push(resultat); changerPhase("fin_mesure"); sauvegarder();
       console.log(`Palier ${taille} personnes / page ${page} : ${resultat.verdict.ok ? "valide dans ce scenario" : "arret"}, HTTP p95 ${http.p95Ms} ms, p99 ${http.p99Ms} ms, erreurs ${http.erreurs}/${http.tentatives}.`);
       return resultat;
-    } finally { await fermerSockets(); stage = null; }
+    } finally { retardBoucle?.disable(); await fermerSockets(); stage = null; }
   }
   async function nettoyer() {
     changerPhase("nettoyage");
@@ -659,7 +793,7 @@ export async function executer(options) {
       campagne: for (const taille of o.paliers) {
         let empreinte = null;
         for (const page of o.pages) {
-          const resultat = await palier(taille, page, empreinte);
+          const resultat = await palier(taille, page, empreinte, monitorEventLoopDelay({ resolution: 20 }), attendreCompteurs);
           // Un palier dégradé interdit toute augmentation et toute autre
           // variante, quel que soit le mode choisi.
           if (!resultat.verdict.ok) break campagne;

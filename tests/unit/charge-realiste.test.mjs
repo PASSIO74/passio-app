@@ -8,9 +8,10 @@ import { optionsBanc, emailCapacite, DOMAINE_CAPACITE, STAGING_REF, LIMITES, Bud
   postPourLike, aimerEtRetirer, delaiFixture, DisponibiliteRealtime,
   PROFIL_REALTIME, LIKES_VISIBLES, compteurHead, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas,
   CADENCES_COMPTEURS, CADENCE_COMPTEURS, decalageInitialCompteurs, familleFrameRealtime,
-  verdictAvecCompteurs, verifierDureeMesure, MARGE_FIN_MESURE_MS } from "../../scripts/lib/charge-realiste.mjs";
+  verdictAvecCompteurs, qualifierMinuteurs, verifierDureeMesure, MARGE_FIN_MESURE_MS } from "../../scripts/lib/charge-realiste.mjs";
 import { executer } from "../../scripts/charge-realiste.mjs";
 import { verdictReponse } from "../../scripts/charge-verdict.mjs";
+import PassioCartesFil from "../../js/fil-cartes.js";
 
 const cible = ["--projet", STAGING_REF];
 test("le sélecteur réel de purge E2E ignore les comptes du domaine capacité, même pendant la CI", async () => {
@@ -72,6 +73,8 @@ test("page 20 seule reste une variante dans le plan exécutable, les autres séq
     const plan = await executer(optionsBanc([...cible, "--pages", "20", "--paliers", "200", "--duree", "90"]));
     assert.equal(plan.plan, true);
     assert.deepEqual(plan.pages, [20]);
+    assert.equal(plan.lectureCartes, "complete");
+    assert.equal(optionsBanc([...cible, "--pages", "20", "--lecture-cartes", "rpc"]).lectureCartes, "rpc");
     assert.deepEqual(plan.paliers, [200]);
     assert.deepEqual(plan.limites, LIMITES);
     assert.equal(plan.comptesDistincts, 200);
@@ -91,11 +94,19 @@ test("200 personnes exigent 200 identités ; impossible de recycler un pool de 1
 });
 
 test("les partenaires de messagerie sont distincts et connectés même au palier impair 25", () => {
-  for (const taille of [2, 25, 50, 100, 200]) for (let i = 0; i < taille; i++) {
+  for (const taille of [2, 25, 50, 100, 125, 150, 175, 200]) for (let i = 0; i < taille; i++) {
     const autre = partenaire(i, taille);
     assert.notEqual(autre, i); assert.ok(autre >= 0 && autre < taille);
   }
-  assert.equal(partenaire(24, 25), 0);
+  for (const taille of [25, 125, 175]) {
+    assert.equal(partenaire(taille - 1, taille), 0);
+    const paires = new Set(Array.from({ length: taille }, (_, i) => [i, partenaire(i, taille)].sort((a, b) => a - b).join("_")));
+    assert.equal(paires.size, Math.ceil(taille / 2));
+  }
+  for (const taille of [125, 150, 175]) assert.equal(optionsBanc([...cible, "--paliers", String(taille)]).comptesDistincts, taille);
+  assert.equal(optionsBanc(cible).fraicheurLikes, "fil");
+  assert.equal(optionsBanc([...cible, "--fraicheur-likes", "independante"]).fraicheurLikes, "independante");
+  assert.throws(() => optionsBanc([...cible, "--fraicheur-likes", "autre"]), /FRAICHEUR_LIKES_INVALIDE/);
 });
 
 test("sans-cdc (défaut depuis la migration du 2026-11-09) : AUCUNE liaison ; transition5 : cinq ; R25 : jamais conv_members ni notifications", () => {
@@ -290,29 +301,37 @@ test("HEAD exige un total exact, y compris zéro ; succès vide ou total inconnu
   for (const status of [204, 400, 401, 403, 429, 500]) assert.throws(() => compteurHead(status, "*/1"), new RegExp(`HTTP_${status}`));
 });
 
-test("le vrai chemin HEAD porte le JWT lecteur, compte son appel et refuse un en-tête absent", async () => {
+test("le RPC groupé porte le JWT lecteur, compte les octets et refuse une réponse fausse ou trop large", async () => {
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function requete("), fin = source.indexOf("async function cadencer(", debut);
-  let status = 200, range = "*/7"; const appels = [], mesures = [], budget = new Budget();
-  const ctx = { performance, AbortController, setTimeout, clearTimeout, Buffer, compteurHead,
+  const ids = ["p1", "p2", "p3"];
+  const bonnes = ids.map((post_id, likes) => ({ post_id, likes }));
+  let lignes = bonnes, status = 200;
+  const appels = [], mesures = [], budget = new Budget();
+  const ctx = { performance, AbortController, setTimeout, clearTimeout, Buffer, verdictReponse,
     phase: "mesure", stage: { taille: 25, page: 20 }, debut: Date.now(), arret: null,
     base: "https://staging.example.test", cleAnon: "anon-factice", cleService: "service-factice", controleurs: new Set(), originesInterruption: new WeakMap(), mesures,
-    octets: x => Buffer.byteLength(x), compter: q => budget.compter(q), attendreTableau: () => ({}),
-    motifSur: e => e.message, URLSearchParams,
-    fetch: async (url, opt) => { appels.push({ url, opt }); return new Response(null, { status, headers: range ? { "content-range": range } : {} }); },
+    octets: x => Buffer.byteLength(x), compter: q => budget.compter(q),
+    attendreTableau: (min, champs) => ({ tableau: true, min, champs }), motifSur: e => e.message, URLSearchParams,
+    fetch: async (url, opt) => { appels.push({ url, opt }); return new Response(JSON.stringify(lignes), { status }); },
   };
-  const lire = runInNewContext(source.slice(debut, fin) + "\ncompterLikes;", ctx);
-  assert.equal(await lire({ jwt: "lecteur-factice" }, "post-test"), 7);
-  assert.equal(appels[0].opt.method, "HEAD");
+  const lire = runInNewContext(source.slice(debut, fin) + "\nlireLikesVisibles;", ctx);
+  const compte = { jwt: "lecteur-factice" };
+  assert.deepEqual(Object.fromEntries(await lire(compte, ids)), { p1: 0, p2: 1, p3: 2 });
+  assert.equal(appels[0].opt.method, "POST");
   assert.equal(appels[0].opt.headers.Authorization, "Bearer lecteur-factice");
-  assert.equal(appels[0].opt.headers.Prefer, "count=exact");
-  const url = new URL(appels[0].url);
-  assert.equal(url.searchParams.get("post_id"), "eq.post-test"); assert.equal(url.searchParams.get("select"), "post_id");
-  assert.equal(budget.requetes, 1); assert.equal(mesures[0].ok, true); assert.equal(mesures[0].compteur, 7);
-  assert.equal(mesures[0].octets, 0, "corps vide ne signifie ni requête ni en-têtes gratuits");
-  range = null; await assert.rejects(lire({ jwt: "lecteur-factice" }, "post-test"), /HEAD_COMPTE_INVALIDE/);
-  status = 403; await assert.rejects(lire({ jwt: "lecteur-factice" }, "post-test"), /HTTP_403/);
-  assert.equal(budget.requetes, 3); assert.equal(mesures[1].ok, false); assert.equal(mesures[2].status, 403);
+  assert.equal(new URL(appels[0].url).pathname, "/rest/v1/rpc/fil_likes_visibles");
+  assert.deepEqual(JSON.parse(appels[0].opt.body), { _post_ids: ids });
+  assert.equal(mesures[0].octets, Buffer.byteLength(appels[0].opt.body + JSON.stringify(bonnes)));
+  for (lignes of [[], bonnes.slice(0, 2), [...bonnes, bonnes[0]], [bonnes[0], bonnes[0], bonnes[2]],
+    [{ post_id: "autre", likes: 2 }, ...bonnes.slice(1)], [{ ...bonnes[0], likes: -1 }, ...bonnes.slice(1)],
+    [{ ...bonnes[0], apercus: [] }, ...bonnes.slice(1)]]) {
+    await assert.rejects(lire(compte, ids), /CONTENU_INATTENDU|COMPTEUR_VISIBLE_INVALIDE/);
+    assert.equal(mesures.at(-1).ok, false);
+  }
+  status = 403; await assert.rejects(lire(compte, ids), /HTTP_403/);
+  assert.equal(budget.requetes, mesures.length);
+  assert.ok(appels.every(a => new URL(a.url).pathname.endsWith("/rpc/fil_likes_visibles")));
   assert.equal(ctx.controleurs.size, 0);
 });
 
@@ -323,13 +342,13 @@ test("le vrai prévol maintient un like jusqu'à lecture du destinataire puis re
   const journal = new Map(), etapes = []; let count = 1, invisible = false;
   const ctx = { comptes, postsFixture: [{ id: "fixture" }], postPourLike, mutationsLikes: journal,
     sauvegarder: () => {}, attendreTableau: () => ({}),
-    compterLikes: async (compte, post) => { assert.equal(compte, comptes[1]); assert.equal(post, "fixture"); etapes.push(`HEAD:${count}`); return invisible ? 1 : count; },
+    lireLikesVisibles: async (compte, ids) => { assert.equal(compte, comptes[1]); assert.deepEqual([...ids], ["fixture"]); etapes.push(`RPC:${count}`); return new Map([[ids[0], invisible ? 1 : count]]); },
     inserer: async (nom, table, cle, opt) => { assert.equal(opt.jwt, "jwt-auteur"); assert.equal(table, "post_likes"); assert.ok(journal.has("fixture:auteur")); count++; etapes.push("INSERT"); },
     rest: async (nom, table, params, opt) => { assert.equal(opt.methode, "DELETE"); assert.equal(opt.jwt, "jwt-auteur"); assert.equal(params.post_id, "eq.fixture"); assert.equal(params.user_id, "eq.auteur"); count--; etapes.push("DELETE"); return [{}]; },
   };
   const prevol = runInNewContext(source.slice(debut, fin) + "\nprevolCompteurLikes;", ctx);
   const result = await prevol();
-  assert.deepEqual(etapes, ["HEAD:1", "INSERT", "HEAD:2", "DELETE", "HEAD:1"]);
+  assert.deepEqual(etapes, ["RPC:1", "INSERT", "RPC:2", "DELETE", "RPC:1"]);
   assert.deepEqual([result.avant, result.ajoute, result.retire], [1, 2, 1]); assert.equal(journal.size, 0);
   invisible = true; await assert.rejects(prevol(), /COMPTEUR_AJOUT_NON_VISIBLE/);
   assert.equal(count, 1); assert.equal(journal.size, 0, "le finally retire aussi l'ajout si sa visibilité est refusée");
@@ -342,23 +361,81 @@ test("les frames distinguent table/opération, broadcast et protocole sans journ
   assert.equal(familleFrameRealtime({ event: "phx_reply" }), "protocole:phx_reply");
 });
 
-test("les HEAD rapides ne diluent pas un p95 historique rouge ; leur propre coût est aussi bloquant", () => {
+// Exécuter le vrai minuteur sur une horloge virtuelle, y compris sa requête
+// groupée ou la réutilisation des compteurs. Aucun appel au serveur.
+async function minuteursTest(nombre, { cache = false, mutation = false } = {}) {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function cycleCompteursVisibles("), fin = source.indexOf("function convPour(", debut);
+  let maintenant = 0; const mesures = [];
+  const ctx = { LIKES_VISIBLES, pauseCompteurs, pauseCompteursAdaptative, compteursProchainPas, decalageInitialCompteurs,
+    o: { graine: 1, compteursCadence: "adaptative" }, arret: null, phase: "mesure", stage: { taille: nombre, page: 20 }, mesures,
+    performance: { now: () => maintenant }, motifSur: e => e.message, stop: assert.fail,
+    lireLikesVisibles: async (c, ids) => {
+      mesures.push({ phase: "mesure", type: "http", famille: "fil_likes_visibles", methode: "POST", compte: c.index, ok: true, ms: 20 });
+      maintenant += 20; return new Map(ids.map(id => [id, 1]));
+    } };
+  const surveiller = runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx);
+  for (let index = 0; index < nombre; index++) {
+    maintenant = 0; let reveilEnvoye = false;
+    const compte = { index, postsVisibles: ["a", "b", "c"] };
+    await surveiller(compte, 0, 90000, async ms => {
+      if (mutation && !reveilEnvoye && ms > 20000) {
+        maintenant += 1; compte.reveillerCompteurs(); reveilEnvoye = true; return;
+      }
+      maintenant += ms;
+      if (cache) compte.likesDuFil = new Map(compte.postsVisibles.map(id => [id, maintenant + 15000]));
+    });
+  }
+  return mesures;
+}
+
+test("la qualification exige toutes les échéances de chaque acteur et le réveil consécutif au j’aime", async () => {
+  const appels = await minuteursTest(3, { mutation: true });
+  const qualifie = lignes => qualifierMinuteurs(lignes, 3, 90000, 1);
+  assert.equal(qualifie(appels).complets, 3);
+  for (const compte of [0, 1, 2]) {
+    const reveil = appels.find(m => m.type === "horloge" && m.compte === compte);
+    const suivant = appels.find(m => m.type === "parcours" && m.compte === compte && m.debutMs > reveil.instantMs);
+    assert.equal(suivant.debutMs, reveil.instantMs + 16500);
+  }
+  assert.equal(qualifie(appels.filter(m => m.compte === 1)).ok, false, "un seul acteur qui continue ne suffit pas");
+  assert.equal(qualifie(appels.filter(m => !(m.compte === 1 && m.type === "http"))).ok, false);
+  const caches = await minuteursTest(3, { cache: true });
+  assert.equal(qualifie(caches).ok, true); assert.equal(qualifie(caches).avecRpc, 0);
+  assert.equal(qualifie(caches.filter(m => m.debutMs < 15000)).ok, false, "un premier réveil puis 75 s de silence");
+  assert.equal(qualifie(caches.filter(m => !(m.compte === 2 && m.debutMs > 30000 && m.debutMs < 61000))).ok, false);
+  assert.equal(qualifie(caches.map(m => m.compte === 2 ? { ...m, suivantMs: 999999 } : m)).ok, false);
+  assert.equal(qualifie(caches.slice(0, 1).concat(appels.slice(0, 1))).ok, false, "un seul appel pour tout le palier");
+});
+
+test("les compteurs rapides ne diluent pas un p95 historique rouge ; leur propre coût est aussi bloquant", async () => {
   const bon = statistiques([{ ok: true, ms: 50 }]), lent = statistiques([{ ok: true, ms: 1001 }]), vide = statistiques([]);
-  const base = { http: bon, parcours: bon, realtime: bon, messages: bon, connectes: 25, attendus: 25, termine: true,
+  const base = { graine: 1, echantillonsCompteurs: await minuteursTest(25), http: bon, parcours: bon, realtime: bon, messages: bon, connectes: 25, attendus: 25, termine: true,
     dureeAttendueMs: 90000, dureeMs: 90000, dureeMuraleMs: 90000 };
   assert.equal(verdictAvecCompteurs(base, bon, bon).ok, true);
   assert.ok(verdictAvecCompteurs({ ...base, http: lent }, bon, bon).motifs.includes("P95_HTTP_SUP_1000_MS"));
   assert.ok(verdictAvecCompteurs(base, lent, bon).motifs.includes("P95_COMPTEURS_SUP_1000_MS"));
   assert.ok(verdictAvecCompteurs(base, bon, lent).motifs.includes("P95_COMPTEURS_SUP_1000_MS"));
   assert.ok(verdictAvecCompteurs(base, vide, vide).motifs.includes("COMPTEURS_VISIBLES_NON_EXERCES"));
+  const preuveCache = { depuisFil: true, prevolValide: true, comptesAvecTroisCartesFraiches: 25 };
+  const toutEnCache = { ...base, echantillonsCompteurs: await minuteursTest(25, { cache: true }) };
+  assert.equal(verdictAvecCompteurs(toutEnCache, vide, vide, preuveCache).ok, true);
+  assert.equal(verdictAvecCompteurs(toutEnCache, vide, vide, preuveCache).rpcDedieSousCharge, "non_exerce");
+  const partiellementEnCache = { ...base, echantillonsCompteurs: [
+    ...base.echantillonsCompteurs.filter(m => m.compte === 0), ...toutEnCache.echantillonsCompteurs.filter(m => m.compte !== 0)] };
+  assert.equal(verdictAvecCompteurs(partiellementEnCache, bon, bon, preuveCache).rpcDedieSousCharge, "exerce_par_une_partie");
+  assert.ok(verdictAvecCompteurs(partiellementEnCache, bon, bon).motifs.includes("COMPTEURS_CACHE_NON_QUALIFIE"));
+  for (const partiel of [{ depuisFil: false }, { prevolValide: false }, { comptesAvecTroisCartesFraiches: 24 }])
+    assert.ok(verdictAvecCompteurs(toutEnCache, vide, vide, { ...preuveCache, ...partiel }).motifs.includes("COMPTEURS_VISIBLES_NON_EXERCES"));
+  assert.ok(verdictAvecCompteurs(base, vide, bon, preuveCache).motifs.includes("COMPTEURS_VISIBLES_NON_EXERCES"));
   assert.ok(verdictAvecCompteurs({ ...base, posts: statistiques([{ ok: true, ms: 2001 }]) }, bon, bon).motifs.includes("P95_PUBLICATIONS_SUP_2000_MS"));
   assert.ok(verdictAvecCompteurs({ ...base, posts: vide }, bon, bon).motifs.includes("PUBLICATIONS_SOUS_CHARGE_NON_VALIDEES"));
 });
 
-test("une durée anormale ou absente invalide la preuve même avec zéro erreur et des p95 parfaits", () => {
+test("une durée anormale ou absente invalide la preuve même avec zéro erreur et des p95 parfaits", async () => {
   const bon = statistiques([{ ok: true, ms: 20 }]);
   const base = { http: bon, parcours: bon, realtime: bon, messages: bon, posts: bon,
-    connectes: 200, attendus: 200, termine: true, dureeAttendueMs: 90000, dureeMs: 90000, dureeMuraleMs: 90000 };
+    graine: 1, echantillonsCompteurs: await minuteursTest(200), connectes: 200, attendus: 200, termine: true, dureeAttendueMs: 90000, dureeMs: 90000, dureeMuraleMs: 90000 };
   assert.equal(MARGE_FIN_MESURE_MS, 15000);
   for (const [mono, murale] of [[90000, 90000], [105000, 105000], [90000, 89999]]) {
     assert.equal(verdictAvecCompteurs({ ...base, dureeMs: mono, dureeMuraleMs: murale }, bon, bon).ok, true);
@@ -371,7 +448,7 @@ test("une durée anormale ou absente invalide la preuve même avec zéro erreur 
   ]) {
     const verdict = verdictAvecCompteurs({ ...base, ...changements }, bon, bon);
     assert.equal(verdict.ok, false);
-    assert.deepEqual(verdict.motifs, ["DUREE_MESURE_INVALIDE"]);
+    assert.ok(verdict.motifs.includes("DUREE_MESURE_INVALIDE"));
     assert.equal(verdict.validiteMesure.ok, false);
   }
   assert.deepEqual(verifierDureeMesure(base), { ok: true, motif: null, attendueMs: 90000,
@@ -382,6 +459,7 @@ test("le vrai palier mesure les deux horloges et refuse une suspension même san
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function palier("), fin = source.indexOf("async function nettoyer()", debut);
   assert.ok(debut >= 0 && fin > debut);
+  const tracesCompteurs = await minuteursTest(25);
   for (const [monoFinale, muraleFinale, attendu] of [[90000, 90000, true], [105000, 105000, true],
     [105001, 105001, false], [698562, 698562, false], [90000, 698562, false]]) {
     let mono = 0, murale = 0, debutMono = 0, debutMural = 0, fermetures = 0, sauvegardes = 0;
@@ -400,8 +478,8 @@ test("le vrai palier mesure les deux horloges et refuse une suspension même san
       changerPhase: phase => { ctx.phase = phase; if (phase === 'mesure') { debutMono = mono; debutMural = murale; } },
       decalageInitial: () => 0, pausePrevue: () => 5000, surveillerCompteurs: async () => {},
       action: async () => {
+        if (!mesures.length) mesures.push(...tracesCompteurs);
         for (const [type, famille, methode] of [['http', 'fil', 'GET'], ['parcours', 'fil', null],
-          ['http', 'compteur_like_visible', 'HEAD'], ['parcours', 'compteurs_visibles', null],
           ['realtime', 'message', null], ['realtime', 'post', null]]) {
           mesures.push({ phase: 'mesure', type, famille, methode, ok: true, ms: 20, octets: 0 });
         }
@@ -424,7 +502,7 @@ test("le vrai palier mesure les deux horloges et refuse une suspension même san
   }
 });
 
-test("le vrai minuteur lit au plus trois compteurs séquentiels et garde 15–16,5 s entre débuts", async () => {
+test("le vrai minuteur lit trois compteurs en une requête groupée et garde 15–16,5 s entre débuts", async () => {
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function cycleCompteursVisibles("), fin = source.indexOf("function convPour(", debut);
   let now = 0, enVol = 0, maximumEnVol = 0; const appels = [], mesures = [];
@@ -432,27 +510,43 @@ test("le vrai minuteur lit au plus trois compteurs séquentiels et garde 15–16
     phase: "mesure", stage: { taille: 25, page: 20 }, mesures, performance: { now: () => now },
     sleep: async ms => { assert.ok(ms >= 0); now += ms; }, motifSur: e => e.message,
     stop: motif => { ctx.arret = motif; },
-    compterLikes: async (compte, id) => {
-      enVol++; maximumEnVol = Math.max(maximumEnVol, enVol); appels.push({ id, now });
-      await Promise.resolve(); now += 10; enVol--; return 1;
+    lireLikesVisibles: async (compte, ids) => {
+      enVol++; maximumEnVol = Math.max(maximumEnVol, enVol); appels.push({ ids: [...ids], now });
+      await Promise.resolve(); now += 10; enVol--; return new Map(ids.map(id => [id, 1]));
     },
   };
   const surveiller = runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx);
   const compte = { index: 0, postsVisibles: ["p1", "p2", "p3", "p4", "p5"] };
   await surveiller(compte, 0, 60000);
   assert.equal(appels[0].now, decalageInitialCompteurs(20260920, 0));
-  assert.equal(maximumEnVol, 1); assert.ok(appels.length >= 9);
-  assert.equal(mesures.length * 3, appels.length);
-  assert.deepEqual([...new Set(appels.map(a => a.id))], ["p1", "p2", "p3"]);
-  for (let i = 3; i < appels.length; i += 3) {
-    const ecart = appels[i].now - appels[i - 3].now;
+  assert.equal(maximumEnVol, 1); assert.ok(appels.length >= 3);
+  assert.equal(mesures.length, appels.length);
+  for (const appel of appels) assert.deepEqual(appel.ids, ["p1", "p2", "p3"]);
+  assert.ok(mesures.every(m => m.lectures === 3));
+  for (let i = 1; i < appels.length; i++) {
+    const ecart = appels[i].now - appels[i - 1].now;
     assert.ok(ecart >= 15000 && ecart <= 16500);
   }
   assert.ok(appels.every(a => a.now < 60000));
-  const avant = appels.length; ctx.compterLikes = async () => { throw new Error("HTTP_403"); };
+  const avant = appels.length; ctx.lireLikesVisibles = async () => { throw new Error("HTTP_403"); };
   now = 0; await surveiller(compte, 0, 60000);
   assert.equal(ctx.arret, "HTTP_403"); assert.equal(appels.length, avant);
   assert.equal(mesures.at(-1).ok, false); assert.equal(mesures.at(-1).lectures, 0);
+});
+
+test("le minuteur réutilise les cartes fraîches et réarme à la première expiration, sans reculer le pas", async () => {
+  const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
+  const debut = source.indexOf("async function cycleCompteursVisibles("), fin = source.indexOf("function convPour(", debut);
+  let now = 0; const mesures = [], appels = [];
+  const compte = { index: 0, postsVisibles: ["a", "b", "c"], likesDuFil: new Map([["a", 8000], ["b", 10000], ["c", 10000]]) };
+  const ctx = { LIKES_VISIBLES, o: { graine: 1 }, arret: null, phase: "mesure", stage: { taille: 100, page: 20 }, mesures,
+    performance: { now: () => now }, sleep: async ms => { now += ms; }, decalageInitialCompteurs: () => 0,
+    pauseCompteurs: () => 15000, motifSur: e => e.message, stop: assert.fail,
+    lireLikesVisibles: async (_, ids) => { appels.push({ now, ids: [...ids] }); return new Map(ids.map(id => [id, 7])); } };
+  await runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx)(compte, 0, 24000);
+  assert.deepEqual(appels, [{ now: 8000, ids: ["a"] }, { now: 23000, ids: ["a", "b", "c"] }]);
+  assert.deepEqual(mesures.filter(m => m.type === "cache").map(m => [m.cartes, m.appelEvite]), [[3, true], [2, false]]);
+  assert.equal(mesures.filter(m => m.type === "parcours").length, 2);
 });
 
 test("les compteurs s'étalent sur quinze secondes avec une graine indépendante des parcours", () => {
@@ -463,22 +557,33 @@ test("les compteurs s'étalent sur quinze secondes avec une graine indépendante
   assert.deepEqual(debuts, Array.from({ length: 200 }, (_, i) => decalageInitialCompteurs(20260920, i)));
 });
 
-function filSimule() {
+function carteComplete(id, xmin = "1", revisionProfil = "1") {
+  return { id, xmin, author_id: "auteur", passion_id: null, mood: null, content: "Publication", media_url: null,
+    created_at: "2026-11-25", edited_at: null, is_reel: false, overlays: null, vlog: null, shared_from_post_id: null,
+    shared_data: null, event_id: null, profiles: { xmin: revisionProfil, username: "Auteur", emoji: null, color: null, avatar_url: null, is_private: false } };
+}
+
+function filSimule(fraicheurLikes = "fil", lectureCartes = "complete") {
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
   const debut = source.indexOf("async function fil(compte, page)"), fin = source.indexOf("async function cycleCompteursVisibles(", debut);
   const prefix = "fixture-campagne", profilsFixture = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"];
   const postsFixture = Array.from({ length: 20 }, (_, i) => ({ id: `fixture_${i}` }));
   const ctx = { prefix, profilsFixture, postsFixture, phase: "mesure", LIKES_VISIBLES,
-    colonnesFil: "id,author_id,profiles", liste: ids => `in.(${ids.join(",")})`,
+    o: { fraicheurLikes, lectureCartes }, PassioCartesFil, mesures: [], stage: { taille: 100 }, performance: { now: () => etat.horloge },
+    colonnesFil: "id,author_id,media_url,profiles!author_id(username)", liste: ids => `in.(${ids.join(",")})`,
     attendreTableau: (min = 1, champs = ["id"]) => ({ tableau: true, min, champs }),
   };
-  const etat = { posts: postsFixture.map(p => ({ ...p, author_id: profilsFixture[0], profiles: { username: "Auteur" } })),
+  const etat = { horloge: 0, posts: postsFixture.map(p => ({ ...carteComplete(p.id), author_id: profilsFixture[0] })),
     commentaires: postsFixture.map((p, i) => ({ post_id: p.id, id: `${prefix}_comment_${i}`, author_id: profilsFixture[(i + 1) % profilsFixture.length],
       content: "Commentaire synthetique.", created_at: "2026-11-16T00:00:00Z" })), appels: [], rpcTransformer: rows => rows };
   ctx.rest = async (nom, table, params, opt) => {
-    assert.equal(opt.jwt, "jwt-lecteur"); etat.appels.push({ nom, table, params, opt });
+    assert.equal(opt.jwt, etat.jwtAttendu); etat.appels.push({ nom, table, params, opt });
     let rows;
-    if (table === "posts") rows = etat.posts;
+    if (table === "posts") rows = structuredClone(etat.posts);
+    else if (table === "rpc/fil_cartes_page") rows = etat.posts.map(p => {
+      const version = p.xmin + "." + p.profiles.xmin;
+      return { post_id: p.id, version, carte: opt.corps._versions[p.id] === version ? null : structuredClone(p) };
+    });
     else if (table === "rpc/fil_compteurs") {
       assert.equal(opt.methode, "POST");
       assert.deepEqual(Array.from(opt.corps._post_ids), etat.posts.map(p => p.id));
@@ -490,15 +595,100 @@ function filSimule() {
     }
     else if (table === "profiles") {
       assert.notEqual(params.id, "in.()", "une page sans commentaire ne doit pas interroger une liste d'auteurs vide");
-      rows = [...new Set(etat.commentaires.map(c => c.author_id))].map(id => ({ id, username: "Auteur" }));
-    } else if (table === "comment_interactions") rows = [];
+      rows = [...new Set(etat.commentaires.map(c => c.author_id))].filter(id => params.id.includes(id)).map(id => ({ id, username: "Auteur" }));
+    } else if (table === "rpc/interactions_cibles") rows = [];
     else assert.fail("ancien chemin de lecture du fil");
     if (!verdictReponse(200, JSON.stringify(rows), opt.attentes).ok) throw new Error("CONTENU_INATTENDU");
     return rows;
   };
   const lire = runInNewContext(source.slice(debut, fin) + "\nfil;", ctx);
-  return { etat, lire: () => lire({ index: 0, jwt: "jwt-lecteur" }, 20) };
+  const compte = { index: 0, jwt: "jwt-lecteur" };
+  return { etat, compte, lire: (lecteur = compte) => {
+    etat.jwtAttendu = lecteur.jwt;
+    return lire(lecteur, 20);
+  } };
 }
+
+test("le banc relit les mêmes versions que le navigateur et ne partage pas les cartes entre acteurs", async () => {
+  const { etat, lire } = filSimule("fil", "rpc");
+  for (const p of etat.posts) { p.xmin = "12"; p.profiles.xmin = "13"; }
+  await lire(); await lire();
+  etat.posts[0].xmin = "14";
+  await lire();
+  await lire({ index: 1, jwt: "autre" });
+  const lectures = etat.appels.filter(a => a.table === "rpc/fil_cartes_page");
+  assert.deepEqual(lectures.map(a => Object.keys(a.opt.corps._versions).length), [0,20,20,0]);
+  assert.equal(lectures[2].opt.corps._versions.fixture_0, "12.13");
+  assert.ok(!etat.appels.some(a => a.table === "posts"));
+  assert.equal(etat.appels.filter(a => a.nom === "fil_compteurs").length, 4);
+});
+
+test("une tête vide retire les anciens identifiants et une référence inconnue échoue fermée", async () => {
+  const row = carteComplete("a");
+  const initial = await PassioCartesFil.lire(async () => ({ data: [{ post_id: "a", version: "1.1", carte: row }] }));
+  const vide = await PassioCartesFil.lire(async () => ({ data: [] }), initial.cache);
+  assert.deepEqual(vide.data, []);
+  assert.equal(vide.cache, null);
+  const refuse = await PassioCartesFil.lire(async () => ({ data: [{ post_id: "x", version: "1.1", carte: null }] }), initial.cache);
+  assert.equal(refuse.error.code, "PAGE_FIL_INVALIDE");
+  assert.equal(refuse.data, undefined);
+});
+
+test("une carte incomplète avec une révision plausible déclenche le repli", async () => {
+  for (const champ of ["author_id", "profiles", "is_private"]) {
+    const row = carteComplete("a");
+    if (champ === "is_private") delete row.profiles.is_private;
+    else delete row[champ];
+    const version = row.profiles ? "1.1" : "1.-";
+    const resultat = await PassioCartesFil.lire(async () => ({ data: [{ post_id: "a", version, carte: row }] }));
+    assert.equal(resultat.error.code, "PAGE_FIL_INVALIDE");
+    assert.equal(resultat.cache, undefined);
+  }
+});
+
+test("un cache expiré ne présente aucune révision au RPC", async () => {
+  const row = carteComplete("a", "31", "42");
+  const expire = { expiration: 0, lignes: new Map([["a", row]]) };
+  let appels = 0;
+  const r = await PassioCartesFil.lire(async connues => {
+    appels++;
+    assert.deepEqual(connues, {});
+    return { data: [{ post_id: "a", version: "31.42", carte: row }] };
+  }, expire);
+  assert.equal(appels, 1);
+  assert.deepEqual(r.data, [row]);
+  assert.notEqual(r.data[0], row);
+});
+
+test("une panne de revalidation ne renvoie aucune carte mémorisée", async () => {
+  const cache = { expiration: Date.now() + 60000, lignes: new Map() };
+  const panne = { error: { code: "503", message: "Service unavailable" }, status: 503 };
+  const res = await PassioCartesFil.lire(async () => panne, cache);
+  assert.equal(res, panne);
+});
+
+test("le fil garde deux minutes les auteurs du seul lecteur et date les likes du départ du RPC", async () => {
+  for (const mode of ["fil", "independante"]) {
+    const { etat, compte, lire } = filSimule(mode);
+    const delta = etat.rpcTransformer;
+    etat.rpcTransformer = rows => { etat.horloge += 100; return delta(rows); };
+    const premier = await lire();
+    assert.equal(premier.profils, 2);
+    assert.equal(compte.likesDuFil?.get("fixture_0"), mode === "fil" ? 15000 : undefined);
+    await lire();
+    const appelsProfils = () => etat.appels.filter(a => a.nom === "fil_profils_commentaires").length;
+    assert.equal(appelsProfils(), 1);
+    await lire({ index: 1, jwt: "jwt-lecteur" });
+    assert.equal(appelsProfils(), 2);
+    etat.horloge = 120000;
+    await lire();
+    assert.equal(appelsProfils(), 3, "expiration à 120100 ms, incluant la lecture du RPC");
+    const avantErreur = compte.likesDuFil?.get("fixture_0");
+    etat.rpcTransformer = () => [];
+    await assert.rejects(lire());
+    assert.equal(compte.likesDuFil?.get("fixture_0"), avantErreur);
+  }
+});
 
 test("le vrai parcours fil utilise le RPC du client courant, sans anciennes listes de compléments", async () => {
   const { etat, lire } = filSimule();
@@ -508,17 +698,20 @@ test("le vrai parcours fil utilise le RPC du client courant, sans anciennes list
   const rpc = etat.appels.find(a => a.nom === "fil_compteurs");
   assert.equal(rpc.table, "rpc/fil_compteurs"); assert.equal(rpc.opt.methode, "POST");
   const interactions = etat.appels.find(a => a.nom === "fil_interactions_apercus");
-  assert.equal(interactions.params.comment_id, `in.(${etat.commentaires.map(c => c.id).join(",")})`);
-  assert.equal(interactions.params.order, "created_at.asc");
+  assert.equal(interactions.table, "rpc/interactions_cibles");
+  assert.equal(interactions.opt.methode, "POST");
+  assert.deepEqual([...interactions.opt.corps._comment_ids], etat.commentaires.map(c => c.id));
+  assert.equal(interactions.opt.corps._kinds, null);
+  assert.equal(interactions.opt.corps._limite, 1000);
   const client = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
   assert.match(client, /supa\.rpc\("fil_compteurs", \{ _post_ids: ids \}\)/);
-  assert.match(client, /comment_interactions"\)\.select\("id,comment_id,post_id,user_id,kind,payload,created_at"\)/);
+  assert.match(client, /_lectureGroupee\("interactions_cibles", \{ _comment_ids: uniq, _kinds: null, _limite: 1000 \}\)/);
 });
 
 test("le tri du banc suit les appels du vrai chargeur UI, y compris le départage des horodatages égaux", async () => {
   const client = readFileSync(new URL("../../js/app-08-ui-modals-tour.js", import.meta.url), "utf8");
-  const chargeur = client.indexOf("async function supaLoadPosts("), debut = client.indexOf("async function _interroger(cols)", chargeur);
-  const fin = client.indexOf("let { data, error, status } = await _interroger", debut);
+  const chargeur = client.indexOf("async function supaLoadPosts("), debut = client.indexOf("async function _interroger(", chargeur);
+  const fin = client.indexOf("const versionner =", debut);
   assert.ok(chargeur >= 0 && debut > chargeur && fin > debut, "extraire la requête du chargeur produit, pas une copie de son ordre");
   const ordres = [];
   const requete = {
@@ -549,7 +742,7 @@ test("la vraie lecture exige chaque commentaire de fixture encore visible et son
   const tous = await lire(); assert.equal(tous.commentaires, 20); assert.equal(etat.appels.length, 4);
   etat.posts = etat.posts.map((p, i) => i ? { ...p, id: `nouveau_${i}` } : p);
   etat.commentaires = etat.commentaires.slice(0, 1); etat.appels.length = 0;
-  assert.equal((await lire()).commentaires, 1); assert.equal(etat.appels.length, 4);
+  assert.equal((await lire()).commentaires, 1); assert.equal(etat.appels.length, 3, "l’auteur est dans le cache du lecteur");
   const attendu = { ...etat.commentaires[0] };
   etat.commentaires = []; await assert.rejects(lire(), /COMMENTAIRE_FIXTURE_MANQUANT_OU_ALTERE/);
   for (const cle of ["id", "author_id"]) {
@@ -596,7 +789,7 @@ test("le mix compte seulement les actions et appels réellement mesurés, erreur
     { phase: "mesure", type: "parcours", famille: "message", ok: false },
     { phase: "mesure", type: "parcours", famille: "compteurs_visibles", ok: true },
     { phase: "mesure", type: "http", famille: "fil_compteurs", methode: "POST", ok: true },
-    { phase: "mesure", type: "http", famille: "compteur_like_visible", methode: "HEAD", ok: false },
+    { phase: "mesure", type: "http", famille: "fil_likes_visibles", methode: "POST", ok: false },
     { phase: "mesure", type: "http", famille: "texte-distant-non-fiable", methode: "methode-libre", ok: false },
     { phase: "preparation", type: "parcours", famille: "publier", ok: true },
     { phase: "prevol", type: "http", famille: "post_publier", methode: "POST", ok: true },
@@ -607,7 +800,7 @@ test("le mix compte seulement les actions et appels réellement mesurés, erreur
     { famille: "fil", tentatives: 1, succes: 1, erreurs: 0, pourcentage: 50 },
     { famille: "message", tentatives: 1, succes: 0, erreurs: 1, pourcentage: 50 },
   ]);
-  assert.equal(mix.appelsHttp.familles.find(f => f.famille === "HEAD:compteur_like_visible").erreurs, 1);
+  assert.equal(mix.appelsHttp.familles.find(f => f.famille === "POST:fil_likes_visibles").erreurs, 1);
   assert.equal(mix.appelsHttp.familles.every(f => f.pourcentage === 33.3333), true);
   assert.equal(JSON.stringify(mix).includes("texte-distant"), false);
   assert.deepEqual(mixObserve([]).actions, { total: 0, familles: [] });
@@ -615,7 +808,7 @@ test("le mix compte seulement les actions et appels réellement mesurés, erreur
 
 test("la sauvegarde réelle du rapport publie le mix mesuré, sans confondre préparation et charge", () => {
   const source = readFileSync(new URL("../../scripts/charge-realiste.mjs", import.meta.url), "utf8");
-  const debut = source.indexOf("function sauvegarder()"), fin = source.indexOf("function stop(", debut);
+  const debut = source.indexOf("function sauvegarder("), fin = source.indexOf("function stop(", debut);
   const fichiers = new Map();
   const ctx = {
     rapport: {}, budget: { resume: () => ({ requetes: 2 }) }, nettoyageBudget: null, debut: 0,
@@ -626,9 +819,14 @@ test("la sauvegarde réelle du rapport publie le mix mesuré, sans confondre pr�
     o: { projet: STAGING_REF }, prefix: "fixture", comptes: [], emailsAttendus: [], profilsFixture: [], postsFixture: [],
     mutationsPosts: new Set(), mutationsLikes: new Map(), convs: [], events: [],
     writeFileSync: (nom, contenu) => fichiers.set(nom, JSON.parse(contenu)),
+    renameSync: (temp, cible) => { fichiers.set(cible, fichiers.get(temp)); fichiers.delete(temp); },
   };
   runInNewContext(source.slice(debut, fin) + "\nsauvegarder();", ctx);
   const rapport = fichiers.get("rapport-simule.json");
+  ctx.mutationsPosts.add("synthetique");
+  runInNewContext(source.slice(debut, fin) + "\nsauvegarder(false);", ctx);
+  assert.equal(fichiers.get("rapport-simule.json"), rapport, "une mutation n’a pas réécrit le rapport complet");
+  assert.deepEqual(fichiers.get("rapport-simule.json.manifest.json").posts, ["synthetique"]);
   assert.equal(rapport.mixObserve.actions.total, 1); assert.equal(rapport.mixObserve.appelsHttp.total, 1);
   assert.equal(rapport.mixObserve.appelsHttp.familles[0].famille, "POST:fil_compteurs");
   assert.equal(rapport.mesures.length, 3, "les données brutes conservent aussi les phases hors mesure");
@@ -637,7 +835,7 @@ test("la sauvegarde réelle du rapport publie le mix mesuré, sans confondre pr�
 
 test("un like mesuré restaure exactement les fixtures ; un échec de DELETE laisse sa clé au journal", async () => {
   const posts = Array.from({ length: 120 }, (_, i) => ({ id: `post_${i}` }));
-  for (const n of [25, 50, 100, 200]) {
+  for (const n of [25, 50, 100, 125, 150, 175, 200]) {
     const base = new Set(posts.map((p, i) => `${p.id}:compte_${(i + 1) % n}`));
     const avant = [...base].sort(), journal = new Map();
     for (let i = 0; i < n; i += 4) for (let tour = 0; tour < 24; tour++) {
@@ -715,7 +913,7 @@ test("la vraie suppression conserve le scope et utilise chaque clé composite ; 
 
 test("la cadence hors mesure prévoit le fanout de deux générations et ne réécrit pas les limites serveur", () => {
   assert.equal(delaiFixture("post_likes", "POST", 0), 50);
-  for (const n of [25, 50, 100, 200]) {
+  for (const n of [25, 50, 100, 125, 150, 175, 200]) {
     const intervalle = delaiFixture("post_likes", "DELETE", n);
     assert.ok(1000 / intervalle <= 20);
     assert.ok(2 * n * 1000 / intervalle <= 80);
@@ -761,7 +959,7 @@ test("cadence adaptative du banc : recule sur des compteurs stables, revient à 
       o: { graine: 20260920, compteursCadence: cadence }, arret: null, phase: "mesure", stage: { taille: 25, page: 20 }, mesures,
       performance: { now: () => now }, sleep: async ms => { assert.ok(ms >= 0); now += ms; }, motifSur: e => e.message,
       stop: motif => { ctx.arret = motif; },
-      compterLikes: async (compte, id) => { appels.push({ id, now }); await Promise.resolve(); now += 10; return comptes(id, appels.length); },
+      lireLikesVisibles: async (compte, ids) => { appels.push({ now }); await Promise.resolve(); now += 10; return new Map(ids.map(id => [id, comptes(id, appels.length)])); },
     };
     const surveiller = runInNewContext(source.slice(debut, fin) + "\nsurveillerCompteurs;", ctx);
     return { surveiller, appels, mesures, ctx };
@@ -769,7 +967,7 @@ test("cadence adaptative du banc : recule sur des compteurs stables, revient à 
   // Compteurs stables : les écarts entre débuts suivent 15 → 22,5 → 33,75 → 50,6 → 60 s (+ jitter < 1,5 s).
   let b = banc("adaptative", () => 7);
   await b.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 400000);
-  const debuts = b.appels.filter((_, i) => i % 3 === 0).map(a => a.now);
+  const debuts = b.appels.map(a => a.now);
   const ecarts = debuts.slice(1).map((t, i) => t - debuts[i]);
   const attendus = [15000, 22500, 33750, 50625, 60000, 60000, 60000];
   attendus.forEach((pas, i) => { assert.ok(ecarts[i] >= pas && ecarts[i] < pas + 1500, `écart ${i} = ${ecarts[i]} pour un pas de ${pas}`); });
@@ -783,12 +981,12 @@ test("cadence adaptative du banc : recule sur des compteurs stables, revient à 
   assert.equal(f.mesures.length, 6); assert.equal(cyclesAdaptatifs, 4);
   assert.ok(f.mesures.every(m => m.pasMs === 15000));
   // Un compteur qui change au 4ᵉ cycle ramène le pas à 15 s.
-  b = banc("adaptative", (id, n) => (id === "p2" && n > 9 ? 8 : 7));
+  b = banc("adaptative", (id, n) => (id === "p2" && n > 3 ? 8 : 7));
   await b.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 200000);
   assert.deepEqual(b.mesures.slice(0, 6).map(m => m.vivant), [true, false, false, true, false, false]);
   assert.deepEqual(b.mesures.slice(0, 6).map(m => m.pasMs), [15000, 15000, 22500, 33750, 15000, 22500]);
   // Une erreur n'est pas un calme.
-  b = banc("adaptative", (id, n) => { if (n === 7) throw new Error("ERREUR_INTERNE_OU_RESEAU"); return 7; });
+  b = banc("adaptative", (id, n) => { if (n === 3) throw new Error("ERREUR_INTERNE_OU_RESEAU"); return 7; });
   await b.surveiller({ index: 0, postsVisibles: ["p1", "p2", "p3"] }, 0, 120000);
   assert.equal(b.mesures[2].ok, false); assert.equal(b.mesures[2].vivant, true); assert.equal(b.mesures[3].pasMs, 15000);
 });
