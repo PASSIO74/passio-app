@@ -160,6 +160,9 @@ test.describe("UI-6A0 — Créer une activité", () => {
     await page.evaluate((coverUrl) => {
       const ev = state.seed.events[0];
       ev.coverUrl = coverUrl;
+      // L'édition est réservée à qui organise (garde du moteur depuis le 2026-11-27) :
+      // l'activité de démonstration devient la mienne.
+      ev.organizerId = MY_UID; ev.authorId = MY_UID;
       openCreateEvent(ev.id);
     }, png);
     await page.waitForSelector("#modalContent #evTitle");
@@ -190,7 +193,10 @@ test.describe("UI-6A0 — Créer une activité", () => {
     expect(await page.evaluate(() => window.__envois)).toBe(1);
   });
 
-  test("⑤ coupé, la modale d'avant revient, sans rangement ni garde", async ({ page }) => {
+  // Depuis le 2026-11-27 (dossier CRE, n° 223) la garde anti double envoi vit dans
+  // le MOTEUR (`submitEvent`) : coupé, le module ne range plus rien, mais deux
+  // appuis ne font toujours qu'un envoi.
+  test("⑤ coupé, la modale d'avant revient, sans rangement — et le moteur garde seul le double appui", async ({ page }) => {
     await boot(page, { coupe: true });
     await ouvrir(page);
     await expect(page.locator("#modalContent .modal-title")).toHaveText("Créer une activité");
@@ -199,7 +205,7 @@ test.describe("UI-6A0 — Créer une activité", () => {
     await compterEnvois(page);
     await page.evaluate(() => { submitEvent(); submitEvent(); });
     await page.waitForTimeout(600);
-    expect(await page.evaluate(() => window.__envois), "sans le module, le moteur n'a pas de garde").toBe(2);
+    expect(await page.evaluate(() => window.__envois), "sans le module, la garde du moteur tient").toBe(1);
   });
 
   test("⑤ bis coupé, le module ne touche plus à la couverture, et Entrée y ouvre toujours un sélecteur", async ({ page }) => {

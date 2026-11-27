@@ -5528,6 +5528,10 @@ function ouvrirSortieDepuisMessage(post) {
   if (titre && caseFil && document.getElementById("modalContent").dataset.feedIrlSource === post.id) {
     titre.dataset.publicationStudio = post.id;
     titre.dataset.auteurStudio = post.authorId;
+    // Une sortie reliée à un message Studio garde sa propre confirmation
+    // (« Réessayer le lien ») : pas de section « Inviter des personnes » ici.
+    const inviteDirecte = document.querySelector("#evInviteBandeau.ev-invite-directe");
+    if (inviteDirecte) { inviteDirecte.remove(); window._evInviteCtx = null; }
     caseFil.checked = false;
     const legende = caseFil.closest("label");
     legende.querySelector("strong").textContent = "Publier aussi une carte de la sortie";

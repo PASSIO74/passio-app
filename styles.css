@@ -14730,3 +14730,70 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
   .reels-hint .reels-hint-souris { display: none; }
   .reels-hint .reels-hint-tactile { display: inline; }
 }
+
+/* ═══ STORY / BOBINE, SUITE (2026-11-27) : plusieurs prises, brouillons, « Suivre » ═══
+   Fiche : docs/lots-ui/34-BOBINE-PRISES-BROUILLONS-SUIVRE-2026-11-27.md. */
+/* ── Bobine en plusieurs prises ──
+   Une prise existe (.me-prises) : la galerie et le changement de caméra cèdent leur place à
+   « Refaire » et « Terminer », visibles seulement EN PAUSE (.me-pause). Pendant qu'on filme,
+   ils gardent leur place sans se montrer : le déclencheur reste centré. */
+.me-prises-cote { display: none; position: relative; }
+.media-editor.me-prises .me-capture-bar .me-gallery-thumb,
+.media-editor.me-prises .me-capture-bar #meFlipBtn { display: none; }
+.media-editor.me-prises .me-capture-bar .me-prises-cote { display: inline-flex; visibility: hidden; }
+.media-editor.me-prises.me-pause .me-capture-bar .me-prises-cote { visibility: visible; }
+.me-capture-bar .me-prises-terminer { background: #fff; color: #111; }
+.me-prises-lib {
+  position: absolute; left: 50%; top: calc(100% + 4px); transform: translateX(-50%);
+  font-size: 11.5px; font-weight: 800; color: #fff; white-space: nowrap; text-shadow: 0 1px 6px rgba(0,0,0,0.6);
+}
+/* En pause : ni outils, ni onglets, ni flash — on reprend ou on termine. */
+.media-editor.me-pause .me-rail,
+.media-editor.me-pause .me-flash-btn { display: none; }
+.media-editor.me-pause .me-modes { visibility: hidden; }
+.media-editor.me-pause .me-rec-badge { display: inline-flex; }
+.media-editor.me-pause .me-rec-dot { animation: none; background: #fff; border-radius: 2px; }
+.media-editor.me-pause .me-shutter-progress { display: block; }
+.media-editor.me-pause .me-shutter-inner { background: #ef4444; width: 52px; height: 52px; }
+.media-editor.phase-capture.me-cam-on.me-pause .me-filtres { display: none; }
+/* ── Brouillons : feuille de reprise ── */
+.me-brouillons-liste { display: flex; flex-direction: column; gap: 8px; }
+.me-brouillon { display: flex; align-items: center; gap: 8px; }
+.me-brouillon-reprendre {
+  flex: 1 1 auto; min-width: 0; min-height: 64px; display: flex; align-items: center; gap: 12px;
+  padding: 6px 10px 6px 6px; border: none; border-radius: 14px; cursor: pointer; text-align: left;
+  background: rgba(124,58,237,0.10); color: var(--text, #111); font: inherit;
+}
+.me-brouillon-vignette {
+  flex: 0 0 40px; width: 40px; height: 56px; border-radius: 8px; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #111; color: #fff; font-size: 15px; font-weight: 900;
+}
+.me-brouillon-vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.me-brouillon-texte { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.me-brouillon-texte b { font-size: 15px; font-weight: 800; }
+.me-brouillon-texte span { font-size: 12.5px; color: var(--muted, #6b7280); }
+.me-brouillon-suppr {
+  flex: 0 0 44px; width: 44px; height: 44px; border: none; border-radius: 999px; cursor: pointer;
+  background: rgba(0,0,0,0.06); color: var(--text, #111); font-size: 15px;
+}
+#meBrouillonsBtn .me-rail-pastille { background: #fff; }
+/* ── « Suivre » sur une bobine ──
+   Sur une vidéo : contour et texte blancs. L'état « suivi » (fond accent) et l'attente sont
+   posés en ligne par `_peindreBoutonsSuivi` ; ici, l'attente reste lisible sur fond sombre
+   (le violet accent ne l'est pas) et se distingue par un contour en tirets. */
+.reel-author { flex-wrap: wrap; row-gap: 6px; }
+.reel-author-meta { flex: 1 1 0; min-width: 92px; }
+.reel-suivre {
+  flex: 0 0 auto; min-height: 44px; padding: 0 14px; border-radius: 999px;
+  border: 1.5px solid #fff; background: transparent; color: #fff;
+  font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  -webkit-tap-highlight-color: transparent;
+}
+.reel-suivre:active { transform: scale(0.95); }
+.reel-suivre[data-suivi-attente] { color: #fff !important; border-color: #fff !important; border-style: dashed; }
+
+/* Inviter directement depuis « Créer une activité » (2026-11-27, app-07 `poserInvitationDirecte`) */
+.ev-invite-directe { margin:12px 0 4px; }
+.ev-invite-directe-ico { width:36px; height:36px; flex-shrink:0; border-radius:999px; background:rgba(124,58,237,0.14); display:flex; align-items:center; justify-content:center; font-size:17px; }

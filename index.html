@@ -239,6 +239,9 @@
       <button type="button" class="me-rail-btn" id="meDureeBtn" data-modes="bobine" data-camera="1" onclick="meChangerDuree()" aria-label="Durée maximale de la bobine : 60 secondes" title="Durée">
         <span class="me-rail-ico me-rail-ico-texte" id="meDureeIco" aria-hidden="true">60</span><span class="me-rail-lib">Durée</span>
       </button>
+      <button type="button" class="me-rail-btn" id="mePrisesBtn" data-modes="bobine" data-camera="1" onclick="meBasculerPrises()" aria-pressed="false" aria-label="Plusieurs prises : filmer, mettre en pause, reprendre" title="Plusieurs prises">
+        <span class="me-rail-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="5" height="10" rx="1.5"/><rect x="9.500" y="7" width="5" height="10" rx="1.5"/><rect x="16" y="7" width="5" height="10" rx="1.5"/></svg></span><span class="me-rail-lib">Plusieurs prises</span>
+      </button>
       <button type="button" class="me-rail-btn" id="meEffetsBtn" data-modes="story bobine" data-camera="1" onclick="meBasculerEffets()" aria-pressed="false" aria-label="Effets : filtres de couleur" title="Effets">
         <span class="me-rail-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8L12 3z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"/></svg></span><span class="me-rail-lib">Effets</span>
       </button>
@@ -247,6 +250,10 @@
       </button>
       <button type="button" class="me-rail-btn" id="meMinuteurBtn" data-modes="story bobine" data-camera="1" onclick="meChangerMinuteur()" aria-label="Minuteur désactivé" title="Minuteur">
         <span class="me-rail-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 1.5"/><path d="M9.5 2.5h5"/></svg><span class="me-rail-pastille" id="meMinuteurPastille"></span></span><span class="me-rail-lib" id="meMinuteurLib">Minuteur</span>
+      </button>
+      <!-- Brouillons enregistrés sur cet appareil : montré seulement s'il y en a. -->
+      <button type="button" class="me-rail-btn" id="meBrouillonsBtn" data-modes="story bobine" onclick="meOuvrirBrouillons()" aria-label="Mes brouillons" title="Brouillons" hidden>
+        <span class="me-rail-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 17h4"/></svg><span class="me-rail-pastille" id="meBrouillonsPastille"></span></span><span class="me-rail-lib">Brouillons</span>
       </button>
       <button type="button" class="me-rail-btn me-rail-plier" id="meRailPlier" onclick="meBasculerRail()" aria-expanded="true" aria-label="Masquer les noms des outils" title="Masquer les noms">
         <span class="me-rail-ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span>
@@ -262,7 +269,15 @@
         <button type="button" class="me-gallery-thumb" id="meGalleryThumb" onclick="mePickMedia()" aria-label="Choisir dans la galerie" title="Galerie">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15.5l-4.6-4.6a1.5 1.5 0 0 0-2.1 0L6 19.5"/></svg>
         </button>
+        <!-- Plusieurs prises, en pause : « Refaire » à gauche, « Terminer » à droite
+             (ils prennent la place de la galerie et du changement de caméra). -->
+        <button type="button" class="me-cap-side me-prises-cote" id="mePrisesRecommencerBtn" onclick="mePrisesRecommencer()" aria-label="Refaire la bobine">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.500-5.800"/><path d="M4 4.500v4.200h4.200"/></svg><span class="me-prises-lib">Refaire</span>
+        </button>
         <button class="me-shutter" id="meShutter" aria-label="Capturer"><span class="me-shutter-progress"></span><span class="me-shutter-ring"></span><span class="me-shutter-inner"></span></button>
+        <button type="button" class="me-cap-side me-prises-cote me-prises-terminer" id="mePrisesTerminerBtn" onclick="mePrisesTerminer()" aria-label="Terminer et voir l'aperçu">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.500l4.500 4.500L19 7.500"/></svg><span class="me-prises-lib">Terminer</span>
+        </button>
         <button type="button" class="me-cap-side" id="meFlipBtn" onclick="meFlipCamera()" aria-label="Changer de caméra" title="Changer de caméra">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.5"/><path d="M5 3.5v3.3h3.3"/><path d="M4 13a8 8 0 0 0 14.3 4.5"/><path d="M19 20.5v-3.3h-3.3"/></svg>
         </button>
