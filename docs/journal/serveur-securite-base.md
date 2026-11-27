@@ -2332,7 +2332,7 @@ par la session cloud avait été refusée par ses permissions. Mesuré au canal 
   devenu un ORACLE (red team du sondage des bobines, 2026-11-27) : un votant bloquait X, relisait le
   score, savait ce que X avait voté, débloquait X. Corrigé par `migration_story_sondage_score_auteur_2026-11-27.sql`
   (anti-jointure sur `blocks` avec `stories.author_id`, banc `tests/sql/migration-story-sondage-score-auteur.test.sh`) —
-  **NON appliquée** au 2026-11-27 ; 0 vote en base ce jour-là.
+  **appliquée en prod le 2026-11-27** (journal n°95), avant le premier vote (0 vote en base ce jour-là).
 
 ## 🔒 ACTIVITÉS PRIVÉES, SUR INVITATION — UNE INVITATION CIBLÉE N'EST PLUS UNE ANNONCE PUBLIQUE (2026-11-26)
 
@@ -2495,7 +2495,14 @@ par son propre prérequis (« Policies source supplementaires : revue requise »
 - Usage mesuré le 2026-11-27 au matin : 0 activité privée, 0 lien — et 0 activité créée tout
   court depuis deux jours. À relire dans une semaine (`activite_privee_*`, `meta.trafic` vide).
 
-## 📊 SONDAGE DES BOBINES — `migration_bobine_sondage_2026-11-27.sql` (**NON appliquée** au 2026-11-27)
+## 📊 SONDAGE DES BOBINES — `migration_bobine_sondage_2026-11-27.sql` (**appliquée en prod** le 2026-11-27)
+
+Appliquée depuis la session cloud, à la demande de Benjamin (« Fait toi même »), par `appliquer-migration.mjs`
+au travers de l'API de gestion Supabase (connectée à la session) : journal n°95 (correctif du score des
+stories, d'abord) puis n°96. ⚠️ Depuis une session cloud, `fetch` de Node n'emprunte pas le proxy sans
+`NODE_USE_ENV_PROXY=1` (« fetch failed », rien n'est envoyé). Mesuré ensuite au canal ① : table, RLS, deux
+policies, trois fonctions DEFINER à `search_path` vide, déclencheurs `120` / `user_id`, hors publication,
+score du point de vue de l'auteur, 0 vote. Client allumé ensuite (`BOBINE_SONDAGE_ACTIF = true`).
 
 > **Règle tirée de ce lot** : un filtre qui dépend d'un état que l'APPELANT écrit lui-même (ses blocages,
 > ses abonnements, ses masquages) ne s'applique jamais à un AGRÉGAT que d'autres comptes alimentent —

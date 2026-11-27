@@ -7,7 +7,8 @@
 //      message (jamais un compte d'exemple, jamais soi) ;
 //   ③ ❓ Question : posée sur la story ; un spectateur répond, la réponse part
 //      en message à l'auteur, la story est en pause pendant qu'il écrit ;
-//   ④ bobine : Activité, Mention et Question proposées (lot H), pas le Sondage ;
+//   ④ bobine : Activité, Mention et Question proposées (lot H), le Sondage aussi
+//      depuis le 2026-11-27 (sa table existe), pas la Musique ;
 //   ⑤ un sticker hostile d'un autre compte ne sort pas de ses attributs ;
 //   ⑩ compte PRIVÉ : une story « tous » ou une bobine ne prévient que les
 //      mentionnés abonnés ACCEPTÉS (relus au serveur) — un autre compte
@@ -167,16 +168,19 @@ test("③ ❓ Question : la réponse d'un spectateur part en message à l'auteur
   expect(await page.evaluate(() => !!window._storyEnPause), "la pause revient à ce qu elle était").toBe(false);
 });
 
-test("④ bobine : Activité, Mention et Question proposées, pas le Sondage", async ({ page }) => {
+test("④ bobine : Activité, Mention, Question et Sondage proposés, pas la Musique", async ({ page }) => {
   await banc(page, "bobine");
   await page.locator('.me-tool[aria-label="Ajouter un sticker"]').click();
   await expect(page.locator('#meStickerPanel [data-sticker="Activité"]')).toBeVisible();
   await expect(page.locator('#meStickerPanel [data-sticker="Mention"]')).toBeVisible();
   // ❓ Question proposée aux bobines depuis le 2026-11-26 (lot H) : la réponse va à
   // l'auteur de la bobine lu dans reelsState.items (bobine-montage-video.spec.js ⑤).
-  // 📊 Sondage reste story seulement (votes rangés par story_id).
+  // 📊 Sondage proposé aux bobines depuis le 2026-11-27 : ses votes ont leur table
+  // (`bobine_sondage_votes`, appliquée ce jour-là) — ATTENTE CHANGÉE À DESSEIN, elle disait
+  // « story seulement ». 🎵 Musique, elle, reste story seulement.
   await expect(page.locator('#meStickerPanel [data-sticker="Question"]')).toBeVisible();
-  await expect(page.locator('#meStickerPanel [data-sticker="Sondage"]')).toHaveCount(0);
+  await expect(page.locator('#meStickerPanel [data-sticker="Sondage"]')).toBeVisible();
+  await expect(page.locator('#meStickerPanel [data-sticker="Musique"]')).toHaveCount(0);
   // Le lecteur de bobines rend la mention, touchable, et la Question — son texte
   // ÉCHAPPÉ (posts.overlays est écrit par n'importe quel compte).
   const html = await page.evaluate((lea) => renderReelHTML({ id: "reel_s", authorId: "x", type: "video", isReel: true, video: "https://example.invalid/v.mp4", overlays: [{ type: "mention", uid: lea, nom: "Léa", x: 50, y: 50 }, { type: "question", q: "Piège <img src=x onerror=alert(1)> ?" }], text: "", likes: 0, comments: [] }, 0), LEA);

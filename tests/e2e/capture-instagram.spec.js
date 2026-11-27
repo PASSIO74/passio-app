@@ -398,7 +398,8 @@ test("⑨ édition : chaque outil reçoit son toucher ; Emoji et GIF sont dans l
   await page.evaluate(() => { meChoisirMode("bobine"); meSetMedia("data:video/webm;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "video"); meState._enteredEditAt = 0; });
   await page.locator('.me-tool[aria-label="Ajouter un sticker"]').tap();
   const bob = await page.locator("#meStickerPanel .me-sticker-choix").evaluateAll((els) => els.map((e) => e.getAttribute("data-sticker")));
-  expect(bob, "ni Sondage ni Musique en bobine").toEqual(["Emoji", "GIF", "Activité", "Mention", "Compte à rebours", "Question"]);
+  // Le Sondage est proposé en bobine depuis le 2026-11-27 (sa table de votes existe) ; la Musique, non.
+  expect(bob, "pas de Musique en bobine").toEqual(["Emoji", "GIF", "Activité", "Mention", "Compte à rebours", "Question", "Sondage"]);
   // ✂️ « Couper » n'est proposé que sur une vidéo, et reçoit son toucher dans la colonne.
   await page.locator('.me-tool[aria-label="Ajouter un sticker"]').tap();
   await expect(page.locator("#meStickerPanel")).toHaveCount(0);
