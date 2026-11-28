@@ -6137,8 +6137,21 @@ function _checkEventReminders() {
       }
       if (!tier) return;
 
-      var mark = e.id + ":" + tier.key;
+      // ⚠️ LA MARQUE PORTE LA DATE (2026-11-28, sujet 137) : `<id>:<palier>` seule
+      // était testée AVANT la garde « reportée » — une activité déplacée gardait
+      // dans la cloche le rappel de l'ANCIENNE heure, et le palier ne se rejouait
+      // pas. L'ancienne marque sans date reste valable tant qu'aucun rappel de la
+      // cloche ne prouve un report (sinon chaque compte en recevrait un de plus).
+      var ancienne = e.id + ":" + tier.key;
+      var mark = ancienne + ":" + e.date;
       if (reminded.indexOf(mark) > -1) return;
+      if (reminded.indexOf(ancienne) > -1) {
+        var reportee = (state.notifications || []).some(function (n) {
+          return n && n.kind === "event_reminder" && n.refId === e.id
+            && n.dateActivite != null && n.dateActivite !== e.date;
+        });
+        if (!reportee) return;
+      }
       // Seconde ceinture : la cloche elle-même. Un rappel de ce palier (ou d'un
       // palier plus proche) déjà présent pour cette activité vaut marque.
       var rang = _rangPalierRappel(tier.key);
@@ -6147,7 +6160,7 @@ function _checkEventReminders() {
           && (n.palier
             // Une activité REPORTÉE n'est pas la même échéance : l'ancien rappel ne la tait pas.
             ? _rangPalierRappel(n.palier) >= rang && (n.dateActivite == null || n.dateActivite === e.date)
-            : String(n.id) === "rappel_" + mark);
+            : String(n.id) === "rappel_" + ancienne);
       });
       if (dejaLa) { reminded.push(mark); return; }
 
@@ -6168,9 +6181,9 @@ function _checkEventReminders() {
       if (typeof pushNotification === "function") {
         pushNotification("Rappel : <b>" + escapeHtml(e.title) + "</b> " + when
           + " à " + _eventTimeLabel(e)
-          + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰", "me", { kind: "event_reminder", refId: e.id, id: "rappel_" + mark });
+          + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰", "me", { kind: "event_reminder", refId: e.id, id: "rappel_" + ancienne });
         var posee = (state.notifications || [])[0];
-        if (posee && posee.id === "rappel_" + mark) { posee.palier = tier.key; posee.dateActivite = e.date; }
+        if (posee && posee.id === "rappel_" + ancienne) { posee.palier = tier.key; posee.dateActivite = e.date; }
       }
       change = true;
       reminded.push(mark);
@@ -6286,7 +6299,9 @@ function downloadEventIcs(id) {
   const end = new Date(_eventEndAt(ev));
   const fmt = (d) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
   const loc = [ev.venue, ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
-  const esc = (s) => String(s || "").replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
+  // Un retour chariot NU (\r) coupait aussi la ligne : un titre ou un lieu
+  // pouvait ajouter des propriétés au calendrier importé (2026-11-28).
+  const esc = (s) => String(s || "").replace(/([,;\\])/g, "\\$1").replace(/\r\n|\r|\n/g, "\\n");
   const ics = [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//PASSIO//IRL//FR", "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
