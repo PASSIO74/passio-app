@@ -6796,8 +6796,21 @@ function mergeSupaNotifs(ns) {
   // été persisté (ou pas encore propagé), une notif vue ici ne doit JAMAIS
   // revenir en non-lue → on force `unread=false`. (Bug « les mêmes notifs
   // réapparaissent à chaque ouverture ».)
+  // ⚠️ SAUF UNE LIGNE RAFRAÎCHIE (2026-11-27, sujet 142) : la base réécrit le MÊME
+  // identifiant pour une seconde annulation (`n_pi_…`, après réactivation) ou une
+  // seconde promotion (`n_pa_…`), avec `seen = false` et une date neuve. La mémoire
+  // la forçait « lue » : ni pastille, ni surlignage — on venait à une activité
+  // réannulée. La date VUE est mémorisée avec l'identifiant (`seenNotifAt`) : une
+  // ligne non lue PLUS RÉCENTE que ce qu'on a vu est une nouvelle. Un identifiant
+  // de l'ancienne mémoire (sans date) reste lu, comme avant.
   const _seenSet = new Set((state.user && state.user.seenNotifIds) || []);
-  ns.forEach(n => { if (n && _seenSet.has(n.id)) n.unread = false; });
+  const _seenAt = (state.user && state.user.seenNotifAt) || {};
+  ns.forEach(n => {
+    if (!n || !_seenSet.has(n.id)) return;
+    const vuA = _seenAt[n.id];
+    if (n.unread && typeof vuA === "number" && typeof n.createdAt === "number" && n.createdAt > vuA) { _oublierNotifVue(n.id); return; }
+    n.unread = false;
+  });
   const localOnly = (state.notifications || []).filter(n => !n.fromSupabase);
   const byId = new Map();
   [...ns, ...localOnly].forEach(n => { if (n && n.id && !byId.has(n.id)) byId.set(n.id, n); });
@@ -6864,7 +6877,7 @@ function _resetNotifBadge() {
   (state.notifications || []).forEach(n => {
     if (n.unread) {
       n.unread = false; changed = true;
-      _rememberSeenNotif(n.id);
+      _rememberSeenNotif(n.id, n.createdAt);
       if (n.fromSupabase) supaIds.push(n.id);
     }
   });
@@ -6875,20 +6888,35 @@ function _resetNotifBadge() {
 
 // Mémorise localement qu'une notif a été vue (anti-réapparition). Borné à 300
 // ids pour ne pas gonfler indéfiniment le localStorage.
-function _rememberSeenNotif(id) {
+// `vueA` : la date de la notification VUE (sujet 142) — une réécriture plus récente
+// du même identifiant redevient une nouvelle.
+function _rememberSeenNotif(id, vueA) {
   if (!id || !state.user) return;
   if (!Array.isArray(state.user.seenNotifIds)) state.user.seenNotifIds = [];
   if (state.user.seenNotifIds.indexOf(id) === -1) {
     state.user.seenNotifIds.push(id);
     if (state.user.seenNotifIds.length > 300) state.user.seenNotifIds = state.user.seenNotifIds.slice(-300);
   }
+  if (typeof vueA === "number") {
+    if (!state.user.seenNotifAt || typeof state.user.seenNotifAt !== "object") state.user.seenNotifAt = {};
+    if (!(state.user.seenNotifAt[id] >= vueA)) state.user.seenNotifAt[id] = vueA;
+    // Bornée comme la liste : rien ne survit à son identifiant.
+    var garder = new Set(state.user.seenNotifIds);
+    Object.keys(state.user.seenNotifAt).forEach(function (k) { if (!garder.has(k)) delete state.user.seenNotifAt[k]; });
+  }
+}
+// Une ligne rafraîchie par la base n'est plus « vue » : elle sort des deux mémoires.
+function _oublierNotifVue(id) {
+  if (!id || !state.user) return;
+  if (Array.isArray(state.user.seenNotifIds)) state.user.seenNotifIds = state.user.seenNotifIds.filter(function (x) { return x !== id; });
+  if (state.user.seenNotifAt && typeof state.user.seenNotifAt === "object") delete state.user.seenNotifAt[id];
 }
 
 function markNotifRead(id) {
   const n = state.notifications.find(x => x.id === id);
   if (n) {
     n.unread = false;
-    _rememberSeenNotif(id);
+    _rememberSeenNotif(id, n.createdAt);
     saveState();
     renderBell();
     // Re-render en place (pas de réouverture → évite un re-fetch Supabase).
@@ -7043,7 +7071,7 @@ function markAllNotifsRead() {
   const supaIds = [];
   state.notifications.forEach(n => {
     n.unread = false;
-    _rememberSeenNotif(n.id);
+    _rememberSeenNotif(n.id, n.createdAt);
     if (n.fromSupabase) supaIds.push(n.id);
   });
   // ⚠️ Bug historique : « Tout marquer lu » ne synchronisait PAS le `seen` côté
@@ -11949,6 +11977,21 @@ async function supaCreateGroup(groupName, memberIds, passionId, rapport) {
 // rechargement en réautorise une, jamais un silence durable.
 window._msgNotifDerniere = window._msgNotifDerniere || {};
 var MSG_NOTIF_FENETRE_MS = 5 * 60 * 1000;
+// ⚠️ LES PLAFONDS DU SERVEUR, PAS UNE BOUCLE SANS FIN (2026-11-27, sujet 154). Une
+// ligne par membre et une push par ligne, en moins d'une seconde : la base refuse
+// au-delà de 60 lignes par minute et par émetteur (`notifications_limiter_debit`,
+// P0001), `notify-call` au-delà de 20 invocations (et le refus vaut aussi pour les
+// autres pushes de l'expéditeur dans la minute — j'aime, commentaire, appel). Dans
+// un groupe de 100, 39 requêtes partaient pour rien, 40 pushes en 429. Correctif
+// CLIENT minimal, en attendant la diffusion par la base (fonction
+// `notifier_message_conversation` sur le modèle de `prevenir_inscrits_activite`,
+// une seule invocation de push « conversation » côté service_role) :
+//   · lecture ORDONNÉE des membres (`user_id`) — un ordre stable, pas celui du tas ;
+//   · au plus MSG_NOTIF_LIGNES_MAX lignes (marge sous 60 pour les autres
+//     notifications de la minute) et MSG_NOTIF_PUSH_MAX pushes ;
+//   · arrêt au premier refus de DÉBIT : les suivantes seraient refusées aussi.
+var MSG_NOTIF_LIGNES_MAX = 50;
+var MSG_NOTIF_PUSH_MAX = 15;
 
 async function _notifierMessage(convId, msgId) {
   try {
@@ -11961,7 +12004,7 @@ async function _notifierMessage(convId, msgId) {
     // Destinataires = les AUTRES membres. On les demande à la base plutôt qu'à
     // l'état local : une conversation reçue à l'instant peut n'avoir aucun
     // `userIds` en mémoire, et on notifierait alors personne.
-    var { data: membres } = await supa.from("conv_members").select("user_id").eq("conv_id", convId);
+    var { data: membres } = await supa.from("conv_members").select("user_id").eq("conv_id", convId).order("user_id", { ascending: true });
     var cibles = (membres || []).map(function (m) { return m.user_id; })
       .filter(function (u) { return u && u !== MY_UID; });
     if (!cibles.length) return;
@@ -11978,7 +12021,8 @@ async function _notifierMessage(convId, msgId) {
       ? safeNom + " a écrit dans " + ((typeof escapeHtml === "function") ? escapeHtml(conv.groupName || "un groupe") : (conv.groupName || "un groupe"))
       : safeNom + " t'a envoyé un message";
 
-    for (var i = 0; i < cibles.length; i++) {
+    var pushes = 0;
+    for (var i = 0; i < cibles.length && i < MSG_NOTIF_LIGNES_MAX; i++) {
       var cible = cibles[i];
       var res = await supa.from("notifications").insert({
         id: _idNotifMessage(msgId, cible), user_id: cible,
@@ -11988,8 +12032,14 @@ async function _notifierMessage(convId, msgId) {
       // Clé dupliquée : la notification existe déjà (renvoi d'un message en
       // file d'attente) — l'état voulu est atteint, on ne repousse pas.
       var dup = res && res.error && String(res.error.code) === "23505";
-      if (res && res.error && !dup) { console.warn("notif message :", res.error.message); continue; }
+      if (res && res.error && !dup) {
+        console.warn("notif message :", res.error.message);
+        if (String(res.error.code) === "P0001" && /rate limit/i.test(String(res.error.message || ""))) break;
+        continue;
+      }
       if (dup) continue;
+      if (pushes >= MSG_NOTIF_PUSH_MAX) continue;
+      pushes++;
       try {
         supa.functions.invoke("notify-call", {
           body: { toUserId: cible, type: "notif", kind: "message", text: texte, emoji: "✉️" }
@@ -13351,10 +13401,11 @@ function _rtNotificationRecue(r) {
     // Une validation fait aussi ENTRER dans la discussion du groupe (sujet 134).
     activiteNotifiee(notif.refId, { entrerDiscussion: notif.kind === "event_accepted" });
   }
-  if ((state.notifications || []).some(n => n.id === notif.id)) return;
-  // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
-  // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
-  const _seen = ((state.user && state.user.seenNotifIds) || []).indexOf(notif.id) > -1;
+  // Une copie déjà là ne repasse pas — SAUF une ligne réécrite par la base (même
+  // identifiant, non lue, plus récente : seconde annulation, seconde promotion,
+  // sujet 142), qui est une nouvelle et remplace l'ancienne.
+  const _copie = (state.notifications || []).find(n => n.id === notif.id);
+  if (_copie && !(notif.unread && notif.createdAt > (_copie.createdAt || 0))) return;
   // ⚠️ `mergeSupaNotifs` attend la liste COMPLÈTE du serveur : elle REMPLACE les
   // notifications distantes par celles qu'on lui passe. Lui passer la seule
   // nouvelle vidait la cloche de toutes les autres jusqu'à la relecture
@@ -13363,10 +13414,11 @@ function _rtNotificationRecue(r) {
   const _dejaLa = (state.notifications || []).filter(n => n && n.fromSupabase && n.id !== notif.id);
   const _texteToast = _texteBrutNotif(_texteNotifListeAttente(notif));
   mergeSupaNotifs([notif].concat(_dejaLa));
-  if (_seen) return;
-  // Le toast ne montre que ce que la cloche a GARDÉ : `mergeSupaNotifs` écarte un
-  // émetteur bloqué, et le toast partait quand même (défaut préexistant).
-  if (!(state.notifications || []).some(n => n.id === notif.id)) return;
+  // Le toast ne montre que ce que la cloche a GARDÉ, et NON LU : `mergeSupaNotifs`
+  // écarte un émetteur bloqué et repasse « lue » une notification déjà vue (mémoire
+  // locale, cas d'une notif purgée du cache mais déjà consultée) — sauf rafraîchie.
+  const _gardee = (state.notifications || []).find(n => n.id === notif.id);
+  if (!_gardee || !_gardee.unread) return;
   if ((notif.kind === "event_update" || notif.kind === "event_cancelled" || notif.kind === "event_accepted") &&
       typeof signalerChangementSortie === "function") signalerChangementSortie();
   // Demande de participation : le texte serveur ne nomme personne — le toast

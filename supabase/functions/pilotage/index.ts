@@ -25,7 +25,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.118.0";
 import webpush from "npm:web-push@3.6.7";
-import { avecDelai, endpointPushSur, envoyerPushBorne, MAX_ABONNEMENTS_LUS } from "../_shared/push-sur.js";
+import { abandonEnEchec, avecDelai, endpointPushSur, envoyerPushBorne, MAX_ABONNEMENTS_LUS } from "../_shared/push-sur.js";
 import { verifierPlafondEnBase, reponsePlafond } from "../_shared/plafond.js";
 import { REVISION } from "../_shared/revision.js";
 import { aalDuJeton, egaliteConstante, fusionAutorisee } from "../_shared/pilotage.js";
@@ -189,8 +189,12 @@ async function veille(admin: Admin) {
   // Les signaux (pilotage_audience, 5 min) sont lus AVEC le reste : l'alerte
   // en a besoin (veille aveugle) et ne les attend pas plus que les autres.
   const t0 = Date.now();
-  const [sante, signalements, github, dispo, rap, rempl, can, aud, parc] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), lireRemplissage(admin), lireCanari(admin), audience(admin, 300), lireParcoursVeille(admin)]);
+  const [sante, signalements, github, dispo, rapBrut, rempl, can, aud, parc] = await Promise.allSettled([lireSante(admin), lireSignalements(admin), lireGithub(), sonder(), avecDelai(rappels(admin), 20_000, { abandon: "delai" }), lireRemplissage(admin), lireCanari(admin), audience(admin, 300), lireParcoursVeille(admin)]);
   const val = <T>(r: PromiseSettledResult<T>) => (r.status === "fulfilled" ? r.value : null);
+  // Un tour coupé par la borne de 20 s est un ÉCHEC (sujet 156) : la sentinelle
+  // d'`avecDelai` résout, elle ne rejette pas — sans cela, ni `rappels_echec` ni
+  // battement « ko » (_shared/push-sur.js, `abandonEnEchec`).
+  const rap = abandonEnEchec(rapBrut);
   // Un rappel en panne ne doit ni casser la veille ni passer inaperçu : il
   // laisse une trace mesurable (analytics_events, user_id système).
   if (rap.status === "rejected") {
@@ -396,8 +400,9 @@ async function rappels(admin: Admin) {
   if (!pub || !priv) return { inactif: "VAPID absent" };
   webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || "mailto:passioadmin@gmail.com", pub, priv);
   if (Deno.env.get("PASSIO_CONFIRMATIONS_PUSH") === "1") {
-    await pousserConfirmations(admin, webpush.sendNotification.bind(webpush), ACCUSE)
-      .catch(() => console.warn("confirmations : rattrapage indisponible"));
+    // Borné à part (sujet 156) : un rattrapage qui traîne ne consomme plus les 20 s des rappels.
+    await avecDelai(pousserConfirmations(admin, webpush.sendNotification.bind(webpush), ACCUSE)
+      .catch(() => console.warn("confirmations : rattrapage indisponible")), 8_000, null);
   }
   // deno-lint-ignore no-explicit-any
   return envoyerRappels(admin, (sub: any, charge: string, opts: any) => webpush.sendNotification(sub, charge, opts), Date.now(), SECRET_GESTES, ACCUSE);

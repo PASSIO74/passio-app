@@ -655,6 +655,7 @@ function _sendGif(gifUrl) {
       return;
     }
     if (typeof _estConvDemo === "function" && _estConvDemo(c)) { toast("Conversation de démonstration — écris à un vrai membre depuis son profil"); return; }
+    if (typeof convActiviteAnnulee === "function" && convActiviteAnnulee(c.id)) { toast(TEXTE_CONV_ACTIVITE_ANNULEE + " : rien n’a été envoyé.", "warning"); return; }   // sujet 146
 
     var msgId = "msg_" + uid();
     var contentJson = JSON.stringify({type: "gif", url: gifUrl, text: "🎬 GIF"});
@@ -1184,6 +1185,11 @@ function _pjEnvoiPermis() {
       toast("Conversation de démonstration — écris à un vrai membre depuis son profil");
       return false;
     }
+    // Sujet 146 : discussion d’une activité annulée, fermée par la base.
+    if (c && typeof convActiviteAnnulee === "function" && convActiviteAnnulee(c.id)) {
+      toast(TEXTE_CONV_ACTIVITE_ANNULEE + " : rien n’a été envoyé.", "warning");
+      return false;
+    }
   } catch (e) {}
   return true;
 }
@@ -1511,6 +1517,7 @@ function shareLocation() {
     if (!c) return;
 
     if (typeof _estConvDemo === "function" && _estConvDemo(c)) { toast("Conversation de démonstration — écris à un vrai membre depuis son profil"); return; }
+    if (typeof convActiviteAnnulee === "function" && convActiviteAnnulee(c.id)) { toast(TEXTE_CONV_ACTIVITE_ANNULEE + " : rien n’a été envoyé.", "warning"); return; }   // sujet 146
 
     // LOT-4 (audit UX/UI du 2026-11-10, MSG-C56) : la position exacte, au mètre près,
     // partait au premier toucher, sans aperçu. On montre ce qui part et à qui ; rien

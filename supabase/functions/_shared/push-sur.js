@@ -53,3 +53,19 @@ export function avecDelai(promesse, ms, valeurSiDepasse) {
   const delai = new Promise((ok) => { minuterie = setTimeout(() => ok(valeurSiDepasse), ms); });
   return Promise.race([Promise.resolve(promesse), delai]).finally(() => clearTimeout(minuterie));
 }
+
+/**
+ * Un résultat de `Promise.allSettled` dont la valeur est la SENTINELLE d'abandon
+ * d'`avecDelai` (`{ abandon: "delai" }`) est un ÉCHEC, pas un succès (2026-11-27,
+ * sujet 156). `avecDelai` RÉSOUT avec la sentinelle : la veille tenait un tour de
+ * rappels coupé à 20 s pour « ok » — aucune ligne `rappels_echec`, battement vert,
+ * marques déjà écrites, et les pushes jamais parties indiscernables d'un tour
+ * réussi. Le « au plus une fois » des rappels reste (pas de rejeu) : on le TRACE.
+ */
+export function abandonEnEchec(resultat) {
+  if (resultat && resultat.status === "fulfilled" && resultat.value && typeof resultat.value === "object"
+      && resultat.value.abandon === "delai") {
+    return { status: "rejected", reason: new Error("delai depasse : tour abandonne") };
+  }
+  return resultat;
+}

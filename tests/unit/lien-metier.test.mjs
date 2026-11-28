@@ -495,3 +495,37 @@ test("A3 ④ autoriserPushNotif : une ligne `event_cancelled` écrite par le CLI
   // Témoin : la même ligne d'origine serveur passe.
   assert.equal((await autoriserPushNotif(fauxAdmin({ ...ANNUL, notifications: [{ ...ligne, origine: "serveur" }] }), A, B, T0)).ok, true);
 });
+
+// Sujet 155 (2026-11-27) : la preuve d'un commentaire (ou d'un message) était lue
+// SANS ordre — la ligne rendue était la plus ANCIENNE (ordre du tas), jugée trop
+// vieille : dès le deuxième commentaire de la même personne, plus aucune push.
+// Le faux client rend l'ordre du tableau quand aucun `order` n'est demandé : on
+// place l'ancienne AVANT la récente, comme le tas.
+test("155 ① event_comment / comment / message : la preuve est la ligne la PLUS RÉCENTE, pas la première du tas", async () => {
+  const deux = {
+    ...EVT,
+    event_comments: [
+      { id: "ec_vieux", event_id: "ev1", author_id: A, created_at: t(3 * 3600) },
+      { id: "ec_neuf", event_id: "ev1", author_id: A, created_at: t(30) },
+    ],
+    post_comments: [
+      { id: "pc_vieux", post_id: "post_b", author_id: A, content: "joli", created_at: t(3 * 3600) },
+      { id: "pc_neuf", post_id: "post_b", author_id: A, content: "encore", created_at: t(30) },
+    ],
+    conv_messages: [
+      { id: "m_vieux_dm", conv_id: "dm_ab", from_id: A, created_at: t(3 * 3600) },
+      { id: "m_neuf_dm", conv_id: "dm_ab", from_id: A, created_at: t(30) },
+    ],
+  };
+  assert.equal((await lienEvenement(fauxAdmin(deux), "event_comment", A, B, "ev1", T0)).ok, true, "deuxième commentaire d'activité");
+  assert.equal((await lienEvenement(fauxAdmin(deux), "comment", A, B, "post_b", T0)).ok, true, "deuxième commentaire de publication");
+  assert.equal((await lienEvenement(fauxAdmin(deux), "message", A, B, "dm_ab", T0)).ok, true, "deuxième message");
+});
+
+test("155 ② deux commentaires anciens seulement : toujours un refus", async () => {
+  const vieux = { ...EVT, event_comments: [
+    { id: "ec_v1", event_id: "ev1", author_id: A, created_at: t(5 * 3600) },
+    { id: "ec_v2", event_id: "ev1", author_id: A, created_at: t(3 * 3600) },
+  ] };
+  assert.equal((await lienEvenement(fauxAdmin(vieux), "event_comment", A, B, "ev1", T0)).ok, false);
+});

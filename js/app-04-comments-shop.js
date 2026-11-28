@@ -6407,7 +6407,9 @@ function renderMessages() {
       : (c.isGroup ? `background:${displayAvatar};` : `background:${avatarBg(_convU)};`));
     const _convAvInner = ((c.isGroup && c.groupPhoto) || _photoActivite) ? '' : (c.isGroup ? displayEmoji : avatarInner(_convU));
 
-    const membresLine = c.isGroup
+    const membresLine = (c.isGroup && convActiviteAnnulee(c.id))
+      ? `<div class="msg-passion conv-activite-annulee" style="font-size:11px;color:var(--muted);">${TEXTE_CONV_ACTIVITE_ANNULEE}</div>`
+      : c.isGroup
       ? `<div class="msg-passion" style="font-size:11px;color:var(--muted);">👥 ${(typeof nbMembresGroupe === "function" ? nbMembresGroupe(c) : ((c.userIds||[]).length || 0))} membres</div>`
       : "";
 
@@ -6554,6 +6556,24 @@ function photoActiviteConv(c) {
   } catch (e) { console.warn("photoActiviteConv", e); return ""; }
 }
 
+// ⚠️ ACTIVITÉ ANNULÉE = DISCUSSION FERMÉE (2026-11-27, sujet 146). La base ferme
+// lecture et écriture d'un `evgrp_` dès que l'activité passe à `cancelled`
+// (`can_join_event_conversation` exige `status = 'active'`), organisation
+// comprise. La conversation restait dans la messagerie, muette : un message
+// tapé partait en échec sans un mot. Vrai seulement si l'activité est CONNUE ici
+// et annulée — une activité inconnue ne ferme rien.
+var TEXTE_CONV_ACTIVITE_ANNULEE = "Activité annulée — discussion fermée";
+function convActiviteAnnulee(convId) {
+  try {
+    var id = String(convId || "");
+    if (id.indexOf("evgrp_") !== 0 || typeof _eventIsCancelled !== "function") return false;
+    var evId = id.slice(6);
+    var ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(evId))
+      || (typeof allEvents === "function" ? (allEvents() || []).find(function (e) { return e && e.id === evId; }) : null);
+    return !!ev && _eventIsCancelled(ev);
+  } catch (e) { console.warn("convActiviteAnnulee", e); return false; }
+}
+
 async function openConversation(convId) {
   // LOT-46 (PCS-C02) : l'origine posée par startDirectMessage, ou aucune.
   window._convOrigine = window._convOrigineEnAttente || null;
@@ -6624,7 +6644,7 @@ async function openConversation(convId) {
   var _evConnue = !!(_evIdConv && typeof allEvents === "function" && (allEvents() || []).some(function (e) { return e && e.id === _evIdConv; }));
   var _ligneGroupe = c.isGroup
     ? (_evConnue
-        ? `<span class="conv-fp-lien-activite" data-ev="${escapeHtml(_evIdConv)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(_evIdConv)}')">Voir l'activité ›</span>`
+        ? `<span class="conv-fp-lien-activite" data-ev="${escapeHtml(_evIdConv)}" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(_evIdConv)}')">${convActiviteAnnulee(convId) ? TEXTE_CONV_ACTIVITE_ANNULEE + " · voir ›" : "Voir l'activité ›"}</span>`
         : `👥 ${nbMembresGroupe(c)} membres`)
     : (_estConvDemo(c) ? 'Exemple PASSIO' : 'Voir le profil');
 
@@ -8539,6 +8559,9 @@ function sendMessageFp(convId, displayName) {
     var _cDemo = getConversations().find(function (x) { return x.id === convId; });
     if (_estConvDemo(_cDemo)) { toast("Conversation de démonstration — écris à un vrai membre depuis son profil"); return; }
   } catch (e) {}
+  // Sujet 146 : la base refuse tout envoi dans la discussion d'une activité
+  // annulée — on le DIT, et le texte reste dans le champ (au lieu d'une bulle en échec).
+  if (convActiviteAnnulee(convId)) { toast(TEXTE_CONV_ACTIVITE_ANNULEE + " : ton message n'a pas été envoyé.", "warning"); return; }
   // 1. Récupérer le texte
   var inp = document.getElementById("convFpInput");
   if (!inp) { console.error("sendMessageFp: input not found"); return; }
