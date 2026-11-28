@@ -96,8 +96,7 @@ test.describe("UI-6A0 sur l'artefact de production", () => {
     await ouvrir(page);
     await expect(page.locator("#modalContent .modal-title")).toHaveText("Créer une activité");
     expect(await page.evaluate(() => document.getElementById("modalContent").classList.contains("v6a0"))).toBe(true);
-    await expect(page.locator("#modalContent div.v6a0-options")).toHaveCount(1);
-    await expect(page.locator("#modalContent details.v6a0-options")).toHaveCount(0);
+    await expect(page.locator("#modalContent details.v6a0-options")).toHaveCount(1);
     await expect(page.locator("#modalContent .v6a0-publier")).toHaveText("Publier l'activité");
 
     await compterEnvois(page);

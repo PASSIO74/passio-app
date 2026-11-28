@@ -11665,12 +11665,25 @@ button, a, label, select, summary,
 #modalContent.v6a0 .v6a0-quand > label:first-child { grid-column: 1 / -1; }
 #modalContent.v6a0 .v6a0-quand .input { min-width: 0; width: 100%; }
 
-/* ⑤ les options, dépliées d'office */
+/* ⑤ les options repliées */
 #modalContent.v6a0 .v6a0-options {
   margin: 6px 0 12px;
   border-top: 1px solid var(--border, rgba(0, 0, 0, 0.08));
   padding-top: 10px;
 }
+#modalContent.v6a0 .v6a0-options > summary {
+  cursor: default;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #6b7280);
+  padding: 6px 0 10px;
+  list-style: none;
+}
+/* 2026-11-28 : options dépliées d'office, le titre n'est plus un bouton. */
+#modalContent.v6a0 .v6a0-options > summary::-webkit-details-marker { display: none; }
+#modalContent.v6a0 .v6a0-options > summary::marker { content: ""; }
 
 /* ⑥ l'aperçu */
 #modalContent.v6a0 .v6a0-apercu { margin: 4px 0 12px; }
@@ -14850,6 +14863,13 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
   padding: 0 14px;
   font-size: 13px;
 }
+.v6a0-options > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
 /* b) Le champ fautif se voit, et son message aussi : `label.field > span`
    (le libellé en petites capitales grises) s'appliquait au message. */
 label.field > span.ev-champ-erreur {

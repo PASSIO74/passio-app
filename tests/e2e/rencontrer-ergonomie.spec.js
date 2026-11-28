@@ -357,7 +357,7 @@ test.describe("Rencontrer — ergonomie, visuel et accessibilité", () => {
     await expect(pointer).toHaveCount(0);
   });
 
-  test("⑥ contrastes et cibles : bouton principal ≥ 4,5:1, pastille « Dans 2 jours » ≥ 4,5:1, options dépliées sans clic", async ({ page }) => {
+  test("⑥ contrastes et cibles : bouton principal ≥ 4,5:1, pastille « Dans 2 jours » ≥ 4,5:1, « Plus d'options » 44 px", async ({ page }) => {
     await local(page, { id: "evt_erg_6", title: "Bientôt" });
     const r = await page.evaluate(() => {
       const lum = (c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
@@ -386,10 +386,12 @@ test.describe("Rencontrer — ergonomie, visuel et accessibilité", () => {
     expect(r.minBouton, "texte blanc sur CHAQUE arrêt du dégradé").toBeGreaterThanOrEqual(4.5);
     expect(r.pastille).toBe("Dans 2 jours");
     expect(r.ratioPastille).toBeGreaterThanOrEqual(4.5);
-    // « Plus d'options » n'existe plus (2026-11-28) : les options sont dépliées d'office.
     await page.evaluate(() => { closeEventDetail(); openCreateEvent(); });
-    await expect(page.locator("#modalBackdrop.active .v6a0-options > summary")).toHaveCount(0);
-    await expect(page.locator("#modalBackdrop.active #evContact")).toBeVisible();
+    const plus = page.locator("#modalBackdrop.active .v6a0-options > summary");
+    await expect(plus).toHaveText("Plus d'options");
+    const c = await cible(plus);
+    expect(c.h).toBeGreaterThanOrEqual(44);
+    expect(c.haut && c.bas).toBe(true);
   });
 
   test("⑦ 320 px : le contenu garde sa place (héros plus bas, pied compact au défilement), sans qu'aucune action ne disparaisse", async ({ page }) => {
