@@ -611,7 +611,8 @@
     var orga = estOrganisation(ev);
     var exemple = !orga && estExemple(ev);
     var pointer = !orga && !exemple && etat === "going" && peutPointer(ev);
-    var sig = (etat || "none") + (vu ? "|" + vu : "") + (complet ? "|full" : "") + (orga ? "|orga:" + nbInscrits(ev, "going") : "") + (exemple ? "|exemple" : "") + (pointer ? "|pointer" : "");
+    var refuse = !orga && !exemple && !etat && demandeRefusee(ev);
+    var sig = (etat || "none") + (vu ? "|" + vu : "") + (complet ? "|full" : "") + (orga ? "|orga:" + nbInscrits(ev, "going") : "") + (exemple ? "|exemple" : "") + (pointer ? "|pointer" : "") + (refuse ? "|refuse" : "");
     // ⚠️ Le marqueur vit sur le nœud INJECTÉ, jamais sur `#eventDetailCta` : le
     // moteur historique repeint la barre par `innerHTML`, ce qui efface les
     // enfants mais conserve les attributs de l'hôte. Un marqueur posé sur l'hôte
@@ -620,8 +621,61 @@
     if (box && box.getAttribute("data-v4b-rsvp") === sig) return false;
 
     cta.innerHTML = "";
-    cta.appendChild(orga ? construireCtaOrga(sig, ev) : exemple ? construireCtaExemple(sig) : construireCta(sig, etat, complet, vu, pointer));
+    cta.appendChild(orga ? construireCtaOrga(sig, ev) : exemple ? construireCtaExemple(sig) : refuse ? construireCtaRefus(sig) : construireCta(sig, etat, complet, vu, pointer));
     return true;
+  }
+
+  // ⚠️ UNE DEMANDE REFUSÉE A UN ÉTAT (2026-11-28, sujet 212). Le bandeau « Ta
+  // demande n'a pas été acceptée » surmontait un pied « Je participe » identique
+  // à celui d'une première fois : un appui renvoyait une demande — et une
+  // notification à l'organisation —, sans que la personne sache si redemander
+  // était permis ou vain, autant de fois qu'elle le voulait. La base admet la
+  // redemande (la réinscription clôt le refus) : elle reste possible, mais comme
+  // un geste EXPLICITE, confirmé, sous un état qui dit le refus. Combien de
+  // redemandes, et après quel délai, reste une règle à poser côté serveur.
+  function demandeRefusee(ev) {
+    try {
+      return typeof _vueRefusSortie !== "undefined" && !!_vueRefusSortie
+        && _vueRefusSortie.id === ev.id && _vueRefusSortie.refuse === true;
+    } catch (e) { fail("etat_refus", e); return false; }
+  }
+
+  function construireCtaRefus(sig) {
+    var box = document.createElement("div");
+    box.className = "v4b-rsvp v4b-rsvp-refus";
+    box.setAttribute("data-v4b-rsvp", sig);
+    var st = document.createElement("div");
+    st.className = "v4b-rsvp-etat";
+    st.setAttribute("role", "status");
+    st.setAttribute("data-v4b-rsvp-refus", "1");
+    st.textContent = "Demande non acceptée";
+    box.appendChild(st);
+    var d = document.createElement("div");
+    d.className = "v4b-rsvp-detail";
+    d.textContent = "L'organisation n'a pas retenu ta demande. Tu peux redemander si quelque chose a changé : elle sera de nouveau prévenue.";
+    box.appendChild(d);
+    var re = document.createElement("button");
+    re.type = "button";
+    re.className = "btn ghost block v4b-rsvp-redemander";
+    re.setAttribute("data-v4b-rsvp-redemander", "1");
+    re.textContent = "Redemander à participer";
+    box.appendChild(re);
+    return box;
+  }
+
+  function redemander() {
+    var ev = evenementCourant();
+    if (!ev || typeof confirmerAction !== "function") return;
+    var id = ev.id;
+    confirmerAction({ titre: "Redemander à participer ?", texte: "Ta première demande n'a pas été acceptée. L'organisation recevra une nouvelle demande.",
+      libelle: "Redemander", annuler: "Ne pas redemander", danger: false }).then(function (oui) {
+      var actuel = evenementCourant();
+      // La fiche a pu changer pendant la question : on ne redemande que pour CELLE-CI.
+      if (!oui || !actuel || actuel.id !== id) return;
+      track("ui_v4b_rsvp_redemander", { v: VERSION });
+      _inscritA = Date.now();
+      participer();
+    }, function (e) { fail("rsvp_redemander", e); });
   }
 
   // 2026-11-27 (ergonomie e) : PENDANT l'activité (de 1 h avant à la fin), l'action
@@ -1023,6 +1077,8 @@
     if (!e.target || !e.target.closest) return;
     var go = e.target.closest("[data-v4b-rsvp-go]");
     if (go) { e.preventDefault(); e.stopPropagation(); _inscritA = Date.now(); participer(); return; }
+    var redem = e.target.closest("[data-v4b-rsvp-redemander]");
+    if (redem) { e.preventDefault(); e.stopPropagation(); redemander(); return; }
     var chat = e.target.closest("[data-v4b-rsvp-chat]");
     if (chat) {
       e.preventDefault(); e.stopPropagation();
