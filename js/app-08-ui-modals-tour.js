@@ -14765,6 +14765,11 @@ function _motifRefusRsvp(error) {
   const x = /activite_(complete|annulee|passee|introuvable)/.exec(m);
   if (x) return x[1];
   if (/inscriptions_jour_limite/.test(m)) return "limite";
+  // n° 212 (2026-11-28, `inscription_gardee`) : une seule redemande après un refus
+  // de l'organisation, 24 h après ; aucune après deux. Motifs propres à l'écran —
+  // le parcours les compte sous le code fermé « limite » (`_setEventRsvpUn`).
+  const r = /redemande_(trop_tot|epuisee)/.exec(m);
+  if (r) return "redemande_" + r[1];
   if (/organisateur_bloque/.test(m)) return "bloque";
   if (String((error && error.code) || "") === "23503") return "introuvable";
   return null;

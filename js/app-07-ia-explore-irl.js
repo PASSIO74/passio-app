@@ -4493,7 +4493,10 @@ async function _setEventRsvpUn(id, rsvp) {
     // Un refus sans motif fermé, pour un compte qui s'est DÉCLARÉ mineur, est la
     // règle IRL (`irl_adult_only`) : « majorite », jamais une panne du parcours.
     const _mineur = (() => { try { return typeof irlProposerEstMineur === "function" && irlProposerEstMineur() === true; } catch (e) { return false; } })();
-    _rsvpRegle(false, (rsvp && window._irlRefusMotif) || (rsvp && _mineur ? "majorite" : "refus"));
+    // Une redemande bornée par la base (n° 212) est un refus LÉGITIME du limiteur :
+    // le code fermé commun « limite », jamais une panne du parcours.
+    const _motifRc = window._irlRefusMotif && /^redemande_/.test(window._irlRefusMotif) ? "limite" : window._irlRefusMotif;
+    _rsvpRegle(false, (rsvp && _motifRc) || (rsvp && _mineur ? "majorite" : "refus"));
   };
   const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
   _rsvpPosees.add(id);   // à partir d'ici l'état local a changé : voir `_rsvpLocalFaitFoi`
@@ -4562,7 +4565,14 @@ async function _setEventRsvpUn(id, rsvp) {
       fermee = (await _activiteEncoreLisible(ev)) === false;
       if (fermee && !motif) window._irlRefusMotif = "introuvable";   // le code fermé du contrat `event_join`
     }
+    // n° 212 : la base a fermé la redemande — le pied le dit dès maintenant (la
+    // relecture qui suit le verdict précisera « à partir de quand »).
+    if ((motif === "redemande_trop_tot" || motif === "redemande_epuisee") && _vueRefusSortie && _vueRefusSortie.id === id) {
+      _vueRefusSortie.redemande = { motif, possibleLe: (_vueRefusSortie.redemande && _vueRefusSortie.redemande.motif === motif && _vueRefusSortie.redemande.possibleLe) || null };
+    }
     annuler(motif === "complete" ? "Activité complète : la dernière place vient d'être prise — tu peux rejoindre la liste d'attente"
+      : motif === "redemande_trop_tot" ? "L'organisation a refusé ta demande il y a moins de 24 h : tu pourras redemander une fois, plus tard"
+      : motif === "redemande_epuisee" ? "L'organisation a déjà refusé ta demande deux fois : tu ne peux plus demander à participer à cette activité"
       : motif === "annulee" ? "Cette activité a été annulée"
       : motif === "passee" ? "Cette activité est déjà passée"
       : fermee ? "Cette activité n'est plus disponible"
@@ -5364,6 +5374,43 @@ function _lienContactEvenement(contact) {
 let _vueRefusSortie = null;
 const _ecrituresRsvp = new Map();
 
+// ⚠️ UNE DEMANDE REFUSÉE NE SE RENVOIE PLUS SANS FIN (2026-11-28, sujet 212). La
+// base (`inscription_gardee`) admet UNE redemande, 24 h après le refus, et plus
+// aucune après un second refus (`redemande_trop_tot`, `redemande_epuisee`).
+// `etat_redemande_sortie` dit à l'APPELANT seul ce qui lui reste : { motif,
+// possibleLe } quand redemander est fermé, `null` quand c'est permis,
+// `undefined` quand on ne sait pas (base pas migrée, panne) — l'écran garde alors
+// la porte, et la base tranche à l'appui.
+let _etatRedemandeAbsente = false;
+async function _lireEtatRedemande(id) {
+  if (_etatRedemandeAbsente) return undefined;
+  try {
+    const { data, error } = await supa.rpc("etat_redemande_sortie", { p_event_id: id });
+    if (error) {
+      const code = String(error.code || "");
+      if (code === "PGRST202" || code === "42883") _etatRedemandeAbsente = true;
+      return undefined;
+    }
+    if (!data || typeof data !== "object") return null;
+    const motif = data.motif === "redemande_trop_tot" || data.motif === "redemande_epuisee" ? data.motif : null;
+    if (!motif) return null;
+    return { motif, possibleLe: motif === "redemande_trop_tot" && data.possible_le ? supaTs(data.possible_le) : null };
+  } catch (e) { return undefined; }
+}
+
+// La phrase qui dit ce qui reste possible — « » quand redemander est permis.
+function _phraseRedemande(redemande, enSuite) {
+  if (!redemande || !redemande.motif) return "";
+  const debut = enSuite ? " " : "";
+  if (redemande.motif === "redemande_epuisee") {
+    return debut + "L'organisation a déjà refusé deux fois : tu ne peux plus demander à participer à cette activité.";
+  }
+  const quand = redemande.possibleLe
+    ? new Date(redemande.possibleLe).toLocaleString("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })
+    : "";
+  return debut + (quand ? "Tu pourras redemander une fois à partir du " + quand + "." : "Tu pourras redemander une fois, 24 h après le refus.");
+}
+
 function _suspendreLectureRefus(id, uid) {
   const cle = JSON.stringify([uid, id]);
   _ecrituresRsvp.set(cle, (_ecrituresRsvp.get(cle) || 0) + 1);
@@ -5391,8 +5438,18 @@ async function _relireRefusFiche(id) {
   try {
     const {data, error} = await supa.rpc("mon_refus_demande_sortie", {p_event_id: id});
     if (error || typeof data !== "boolean" || !actuelle()) return;
+    // n° 212 (2026-11-28) : la base borne la redemande (une seule, 24 h après le
+    // refus ; aucune après deux). Ce qui reste possible se lit ICI, pour que le pied
+    // le dise AVANT l'appui — `undefined` = inconnu (RPC absente, panne) : on garde.
+    const redemandeAvant = JSON.stringify(vue.redemande || null);
+    if (data || vue.redemande) {
+      const r = await _lireEtatRedemande(id);
+      if (!actuelle()) return;
+      if (r !== undefined) vue.redemande = r;
+    }
+    const redemandeChange = JSON.stringify(vue.redemande || null) !== redemandeAvant;
     const perime = data && !!myRsvp(id);
-    const changement = vue.refuse !== data || perime;
+    const changement = vue.refuse !== data || perime || redemandeChange;
     if (!changement && (!data || vue.participantsRelus)) return;
     if (changement) vue.participantsRelus = false;
     vue.refuse = data;
@@ -5644,7 +5701,7 @@ function openEventDetails(id, remplaceModale = false) {
   // garde la position, le brouillon et le focus, et l'on ne relit pas ce que la
   // fiche tient déjà (commentaires, album).
   document.getElementById("eventDetailContent").innerHTML = `
-    ${_vueRefusSortie.refuse ? '<div class="event-detail-urgency" role="status" data-refus-demande>Ta demande n’a pas été acceptée.</div>' : ''}
+    ${_vueRefusSortie.refuse ? '<div class="event-detail-urgency" role="status" data-refus-demande>Ta demande n’a pas été acceptée.' + escapeHtml(_phraseRedemande(_vueRefusSortie.redemande, true)) + '</div>' : ''}
     ${cancelled ? '<div class="event-detail-urgency cancelled" role="alert"><b>Activité annulée par l\'organisation.</b>'
         + (["going", "maybe", "waitlist"].indexOf(myRsvp(ev.id)) > -1 ? ' Ta participation est annulée, rien d\'autre à faire.' : '') + '</div>'
       : live ? '<div class="event-detail-urgency live">C\'est maintenant — bon moment !</div>'
@@ -5658,7 +5715,7 @@ function openEventDetails(id, remplaceModale = false) {
       ${over || cancelled || (activiteEstPrivee(ev) && !_canManageEvent(ev)) ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">${activiteEstPrivee(ev) ? "Invités" : "Inviter"}</button>`}
       ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">Gérer</button>` : ""}
     </div>
-    ${_eventSocialProofHtml(ev)}
+    ${_eventSocialProofHtml(ev, true)}
 
     <!-- Discussion de groupe : le vrai moteur de participation (Meetup / FB Events). -->
     ${cancelled ? "" : `
@@ -10917,33 +10974,172 @@ function eventLatLng(ev) {
       route vers openEventDetails) — aucune table, aucune migration.
    ========================================================================== */
 
-// Les personnes que JE suis et qui participent (ou hesitent). Renvoie des uids.
+// ⚠️ LA PREUVE SOCIALE ÉTAIT ÉTEINTE (2026-11-28, sujet 198). Elle croisait
+// `ev.attendees` avec mes abonnements ; or, depuis le 16/11, la base ne rend les
+// lignes d'autrui qu'aux participants VALIDÉS et à l'organisation : un membre non
+// inscrit — celui que le bandeau devait aider à décider — ne voyait jamais ses
+// amis. La base répond désormais elle-même (`amis_qui_y_vont`, migration du
+// 2026-11-28) : au plus trois personnes en SUIVI MUTUEL, à la participation
+// validée, et leur nombre — jamais la liste fermée. Lecture PARESSEUSE (à
+// l'affichage), en cache deux minutes, deux à la fois ; RPC absente (base pas
+// migrée : PGRST202 / 42883) → le calcul local d'avant, et plus aucun appel de
+// la session.
+const _amisYVontCache = new Map();   // id d'activité → { uid, t, total, ids, noms, echec }
+const _amisYVontEnVol = new Set();
+let _amisYVontFile = [];
+let _amisYVontActifs = 0;
+let _amisYVontAbsente = false;
+const AMIS_Y_VONT_TTL_MS = 120000;
+
+function _amisYVontInterrogeable(ev) {
+  try {
+    if (!ev || !ev.id || _amisYVontAbsente) return false;
+    if (!window._supaReal || typeof supa === "undefined" || !supa || typeof supa.rpc !== "function") return false;
+    if (typeof _compteAuthReel !== "function" || !_compteAuthReel()) return false;
+    // Une activité de la base (lue, ou la mienne) — jamais un exemple local.
+    if (!(ev.fromSupabase === true || (state.userEvents || []).some(function (e) { return e && e.id === ev.id; }))) return false;
+    if (typeof _eventIsCancelled === "function" && _eventIsCancelled(ev)) return false;
+    // Un suivi MUTUEL commence par un suivi de ma part : sans abonnement, rien à demander.
+    return ((state.user && state.user.following) || []).length > 0;
+  } catch (e) { return false; }
+}
+
+function _amisYVontLu(ev) {
+  var e = ev && ev.id ? _amisYVontCache.get(ev.id) : null;
+  if (!e || e.uid !== MY_UID) return null;
+  return e;
+}
+
+function _amisYVontDemander(ev, prioritaire) {
+  if (!_amisYVontInterrogeable(ev)) return;
+  var id = ev.id;
+  var e = _amisYVontCache.get(id);
+  if (e && e.uid === MY_UID && Date.now() - e.t < AMIS_Y_VONT_TTL_MS) return;
+  if (_amisYVontEnVol.has(id)) return;
+  var i = _amisYVontFile.indexOf(id);
+  if (i > -1) {
+    if (!prioritaire) return;
+    _amisYVontFile.splice(i, 1);
+  }
+  if (prioritaire) _amisYVontFile.unshift(id); else _amisYVontFile.push(id);
+  // Une longue liste ne lance pas des dizaines de lectures : le reste sera demandé
+  // au prochain affichage.
+  if (_amisYVontFile.length > 40) _amisYVontFile.length = 40;
+  setTimeout(_amisYVontPomper, 0);
+}
+
+function _amisYVontPomper() {
+  while (_amisYVontActifs < 2 && _amisYVontFile.length && !_amisYVontAbsente) {
+    var id = _amisYVontFile.shift();
+    _amisYVontActifs++;
+    _amisYVontLire(id).then(function () {}, function () {}).then(function () {
+      _amisYVontActifs--;
+      _amisYVontPomper();
+    });
+  }
+}
+
+async function _amisYVontLire(id) {
+  const uid = MY_UID;
+  _amisYVontEnVol.add(id);
+  try {
+    const { data, error } = await supa.rpc("amis_qui_y_vont", { p_event_id: id });
+    if (MY_UID !== uid) return;
+    if (error) {
+      const code = String(error.code || "");
+      if (code === "PGRST202" || code === "42883") { _amisYVontAbsente = true; _amisYVontFile = []; return; }
+      // Un autre refus : pas de martèlement — nouvel essai après la durée de vie,
+      // et le calcul local d'ici là.
+      _amisYVontCache.set(id, { uid, t: Date.now(), total: 0, ids: [], noms: [], echec: true });
+      return;
+    }
+    const amis = (data && Array.isArray(data.amis)) ? data.amis.filter(function (a) { return a && typeof a.id === "string" && a.id; }) : [];
+    amis.forEach(function (a) { try { if (typeof cacheRemoteProfile === "function") cacheRemoteProfile(a); } catch (e) {} });
+    const ids = amis.map(function (a) { return a.id; });
+    const total = Math.max(ids.length, Math.floor(Number(data && data.total) || 0));
+    const avant = _amisYVontCache.get(id);
+    _amisYVontCache.set(id, { uid, t: Date.now(), total, ids, noms: amis.map(function (a) { return String(a.username || ""); }), echec: false });
+    if (!avant || avant.echec || avant.uid !== uid || avant.total !== total || avant.ids.join("|") !== ids.join("|")) _amisYVontPeindre(id);
+  } catch (e) {
+    /* Hors ligne : garder le dernier état connu. */
+  } finally {
+    _amisYVontEnVol.delete(id);
+  }
+}
+
+// La réponse arrive APRÈS le rendu : on repeint le bandeau en place sur les cartes
+// (avant le pied, là où le gabarit le pose), et la fiche ouverte.
+function _amisYVontPeindre(id) {
+  try {
+    const ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(id)) || allEvents().find(function (e) { return e.id === id; });
+    if (!ev) return;
+    const html = _amisYVontHtml(ev);
+    const sel = '.event-card[data-evid="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]';
+    document.querySelectorAll(sel).forEach(function (card) {
+      const enfants = Array.prototype.slice.call(card.children);
+      const ancien = enfants.find(function (c) { return c.classList && c.classList.contains("event-social-proof"); });
+      if (ancien) { if (html) ancien.outerHTML = html; else ancien.remove(); return; }
+      if (!html) return;
+      const pied = enfants.find(function (c) { return c.classList && c.classList.contains("event-footer"); });
+      if (pied) pied.insertAdjacentHTML("beforebegin", html);
+    });
+    const page = document.getElementById("eventDetailPage");
+    if (window._openEventDetailId === id && page && page.style.display !== "none") {
+      const dans = document.querySelector("#eventDetailContent .event-social-proof");
+      if (dans && html) dans.outerHTML = html;
+      else if (dans || html) _refreshEventDetailIfOpen(id);
+    }
+  } catch (e) {
+    try { if (typeof diagLog === "function") diagLog("amis qui y vont : peinture — " + (e && e.message)); } catch (_) {}
+  }
+}
+
+// Les personnes que JE connais et qui participent (ou hesitent). Renvoie des uids.
 // `maybes` est inclus a part : « 2 y vont, 1 hesite » est une info differente.
+// La réponse de la base fait foi dès qu'elle existe ; tant qu'elle est attendue,
+// rien (le calcul local nommerait des suivis à sens unique que la base écarte).
 function _eventFriendsGoing(ev) {
-  if (!ev) return { going: [], maybe: [] };
+  if (!ev) return { going: [], maybe: [], total: 0 };
+  var srv = _amisYVontLu(ev);
+  if (srv && !srv.echec) return { going: srv.ids.slice(), maybe: [], total: srv.total, serveur: srv };
+  if (!srv && _amisYVontInterrogeable(ev)) return { going: [], maybe: [], total: 0 };
   var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   var follows = (state.user && state.user.following) || [];
-  if (!follows.length) return { going: [], maybe: [] };
+  if (!follows.length) return { going: [], maybe: [], total: 0 };
   var pick = function (list) {
     return (list || []).filter(function (id) {
       return id && id !== me && id !== "me" && follows.indexOf(id) > -1;
     });
   };
-  return { going: pick(ev.attendees), maybe: pick(ev.maybes) };
+  var going = pick(ev.attendees);
+  return { going: going, maybe: pick(ev.maybes), total: going.length };
 }
 
 // Bandeau « X et Y y vont » — avatars empiles + phrase. Rien si je ne connais
 // personne (ne JAMAIS afficher une phrase vide ou « 0 de tes abonnements »).
-function _eventSocialProofHtml(ev) {
+// `prioritaire` : la fiche passe devant les cartes de la liste.
+function _eventSocialProofHtml(ev, prioritaire) {
+  _amisYVontDemander(ev, !!prioritaire);
+  return _amisYVontHtml(ev);
+}
+
+function _amisYVontHtml(ev) {
   var f = _eventFriendsGoing(ev);
   var all = f.going.concat(f.maybe);
   if (!all.length) return "";
 
-  var names = f.going.slice(0, 2).map(function (id) {
-    return ((typeof userById === "function" && userById(id)) || {}).name || "Quelqu'un";
+  var names = f.going.slice(0, 2).map(function (id, i) {
+    var nomSrv = f.serveur && f.serveur.noms ? f.serveur.noms[i] : "";
+    return nomSrv || ((typeof userById === "function" && userById(id)) || {}).name || "Quelqu'un";
   });
   var phrase;
-  if (f.going.length === 0) {
+  var n = Math.max(f.total || 0, f.going.length);
+  if (f.serveur) {
+    // « Léa y va » · « Léa et Tom y vont » · « Léa et 2 ami·es y vont »
+    if (n === 1) phrase = names[0] + " y va";
+    else if (n === 2 && names.length === 2) phrase = names[0] + " et " + names[1] + " y vont";
+    else phrase = names[0] + " et " + (n - 1) + (n - 1 > 1 ? " ami·es" : " ami·e") + " y vont";
+  } else if (f.going.length === 0) {
     phrase = f.maybe.length + " personne" + (f.maybe.length > 1 ? "s" : "") + " que tu suis hésite" + (f.maybe.length > 1 ? "nt" : "");
   } else if (f.going.length <= 2) {
     phrase = names.join(" et ") + (f.going.length > 1 ? " y vont" : " y va");

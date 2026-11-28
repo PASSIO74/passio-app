@@ -612,7 +612,7 @@
     var exemple = !orga && estExemple(ev);
     var pointer = !orga && !exemple && etat === "going" && peutPointer(ev);
     var refuse = !orga && !exemple && !etat && demandeRefusee(ev);
-    var sig = (etat || "none") + (vu ? "|" + vu : "") + (complet ? "|full" : "") + (orga ? "|orga:" + nbInscrits(ev, "going") : "") + (exemple ? "|exemple" : "") + (pointer ? "|pointer" : "") + (refuse ? "|refuse" : "");
+    var sig = (etat || "none") + (vu ? "|" + vu : "") + (complet ? "|full" : "") + (orga ? "|orga:" + nbInscrits(ev, "going") : "") + (exemple ? "|exemple" : "") + (pointer ? "|pointer" : "") + (refuse ? "|refuse" + signatureRedemande(ev) : "");
     // ⚠️ Le marqueur vit sur le nœud INJECTÉ, jamais sur `#eventDetailCta` : le
     // moteur historique repeint la barre par `innerHTML`, ce qui efface les
     // enfants mais conserve les attributs de l'hôte. Un marqueur posé sur l'hôte
@@ -621,7 +621,7 @@
     if (box && box.getAttribute("data-v4b-rsvp") === sig) return false;
 
     cta.innerHTML = "";
-    cta.appendChild(orga ? construireCtaOrga(sig, ev) : exemple ? construireCtaExemple(sig) : refuse ? construireCtaRefus(sig) : construireCta(sig, etat, complet, vu, pointer));
+    cta.appendChild(orga ? construireCtaOrga(sig, ev) : exemple ? construireCtaExemple(sig) : refuse ? construireCtaRefus(sig, ev) : construireCta(sig, etat, complet, vu, pointer));
     return true;
   }
 
@@ -631,16 +631,31 @@
   // notification à l'organisation —, sans que la personne sache si redemander
   // était permis ou vain, autant de fois qu'elle le voulait. La base admet la
   // redemande (la réinscription clôt le refus) : elle reste possible, mais comme
-  // un geste EXPLICITE, confirmé, sous un état qui dit le refus. Combien de
-  // redemandes, et après quel délai, reste une règle à poser côté serveur.
+  // un geste EXPLICITE, confirmé, sous un état qui dit le refus.
+  // 2026-11-28 : la base la BORNE (`inscription_gardee`) — une seule redemande,
+  // 24 h après le refus, aucune après deux. Quand elle est fermée (lu par
+  // `etat_redemande_sortie`, ou appris d'un refus), le bouton cède la place à la
+  // phrase qui dit pourquoi, et jusqu'à quand.
+  function redemandeFermee(ev) {
+    try {
+      var v = typeof _vueRefusSortie !== "undefined" ? _vueRefusSortie : null;
+      return v && v.id === ev.id && v.redemande && v.redemande.motif ? v.redemande : null;
+    } catch (e) { fail("etat_redemande", e); return null; }
+  }
+
+  function signatureRedemande(ev) {
+    var r = redemandeFermee(ev);
+    return r ? ":" + r.motif + ":" + (r.possibleLe || "") : "";
+  }
+
   function demandeRefusee(ev) {
     try {
       return typeof _vueRefusSortie !== "undefined" && !!_vueRefusSortie
-        && _vueRefusSortie.id === ev.id && _vueRefusSortie.refuse === true;
+        && _vueRefusSortie.id === ev.id && (_vueRefusSortie.refuse === true || !!redemandeFermee(ev));
     } catch (e) { fail("etat_refus", e); return false; }
   }
 
-  function construireCtaRefus(sig) {
+  function construireCtaRefus(sig, ev) {
     var box = document.createElement("div");
     box.className = "v4b-rsvp v4b-rsvp-refus";
     box.setAttribute("data-v4b-rsvp", sig);
@@ -652,7 +667,16 @@
     box.appendChild(st);
     var d = document.createElement("div");
     d.className = "v4b-rsvp-detail";
-    d.textContent = "L'organisation n'a pas retenu ta demande. Tu peux redemander si quelque chose a changé : elle sera de nouveau prévenue.";
+    var fermee = ev ? redemandeFermee(ev) : null;
+    if (fermee) {
+      var phrase = "";
+      try { if (typeof _phraseRedemande === "function") phrase = _phraseRedemande(fermee, false); } catch (e) { fail("phrase_redemande", e); }
+      d.textContent = "L'organisation n'a pas retenu ta demande. " + (phrase || "Tu ne peux pas redemander pour l'instant.");
+      d.setAttribute("data-v4b-rsvp-redemande-fermee", fermee.motif);
+      box.appendChild(d);
+      return box;
+    }
+    d.textContent = "L'organisation n'a pas retenu ta demande. Tu peux redemander une fois si quelque chose a changé : elle sera de nouveau prévenue.";
     box.appendChild(d);
     var re = document.createElement("button");
     re.type = "button";
@@ -667,7 +691,7 @@
     var ev = evenementCourant();
     if (!ev || typeof confirmerAction !== "function") return;
     var id = ev.id;
-    confirmerAction({ titre: "Redemander à participer ?", texte: "Ta première demande n'a pas été acceptée. L'organisation recevra une nouvelle demande.",
+    confirmerAction({ titre: "Redemander à participer ?", texte: "Ta première demande n'a pas été acceptée. L'organisation recevra une nouvelle demande — c'est la seule redemande possible pour cette activité.",
       libelle: "Redemander", annuler: "Ne pas redemander", danger: false }).then(function (oui) {
       var actuel = evenementCourant();
       // La fiche a pu changer pendant la question : on ne redemande que pour CELLE-CI.
