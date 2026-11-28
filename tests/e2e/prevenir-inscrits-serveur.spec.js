@@ -186,6 +186,10 @@ test.describe("Prévenir les inscrits — la base écrit, l'écran dit le compte
       out.toastTropLong = window.__toasts.slice(-1)[0];
       window.__verdict = null;
       window.__appels = []; window.__push = [];
+      // Sujet 140 (2026-11-27) : la push des inscrits passe par une file d'une minute
+      // (plafond de notify-call) — le message groupé ci-dessus l'a remplie. On se place
+      // une minute plus tard, la file du message groupé écoulée, comme une modification réelle.
+      clearTimeout(window._filePushInscritsT); window._filePushInscritsT = null; _filePushInscrits.length = 0;
       const v = await _prevenirInscrits(_findCanonicalEvent("ev_village"), "event_update");
       out.maj = { appels: window.__appels.slice(), push: window.__push.slice(), v };
       window.__appels = []; window.__notifs = [];

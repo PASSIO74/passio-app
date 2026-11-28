@@ -252,9 +252,15 @@ export async function membreEnSourdine(admin, convId, userId) {
   return !r.erreur && !!r.ligne && r.ligne.muted === true;
 }
 
-async function unSeul(admin, table, filtres) {
+// `ordre` : la colonne dont on veut la ligne la PLUS RÉCENTE. ⚠️ SANS ORDRE, LA
+// PREUVE ÉTAIT LA PLUS ANCIENNE (2026-11-27, sujet 155) : `limit(1)` rend l'ordre
+// du tas — en pratique le premier commentaire de la personne sur l'activité, jugé
+// trop vieux par `recent`. Dès le deuxième commentaire (ou message), plus aucune
+// push. Même défaut de forme que celui corrigé pour les mentions plus bas.
+async function unSeul(admin, table, filtres, ordre) {
   let q = admin.from(table).select("*");
   for (const [col, v] of filtres) q = q.eq(col, v);
+  if (ordre) q = q.order(ordre, { ascending: false });
   const r = await q.limit(1);
   if (!r || r.error) return { erreur: true };
   return { ligne: (r.data || [])[0] || null };
@@ -344,7 +350,7 @@ export async function lienEvenement(admin, kind, fromUid, toUserId, refId, maint
   try {
     if (k === "message" || k === "mention") {
       if (ref) {
-        const msg = await unSeul(admin, "conv_messages", [["conv_id", ref], ["from_id", fromUid]]);
+        const msg = await unSeul(admin, "conv_messages", [["conv_id", ref], ["from_id", fromUid]], "created_at");
         if (msg.erreur) return { ok: false, raison: "lecture conv_messages" };
         const membre = await unSeul(admin, "conv_members", [["conv_id", ref], ["user_id", toUserId]]);
         if (membre.erreur) return { ok: false, raison: "lecture conv_members" };
@@ -364,7 +370,7 @@ export async function lienEvenement(admin, kind, fromUid, toUserId, refId, maint
       if (!post.ligne || post.ligne.author_id !== toUserId) return { ok: false, raison: "le destinataire n'est pas l'auteur de la publication" };
       const fait = k === "like"
         ? await unSeul(admin, "post_likes", [["post_id", ref], ["user_id", fromUid]])
-        : await unSeul(admin, "post_comments", [["post_id", ref], ["author_id", fromUid]]);
+        : await unSeul(admin, "post_comments", [["post_id", ref], ["author_id", fromUid]], "created_at");
       if (fait.erreur) return { ok: false, raison: "lecture " + (k === "like" ? "post_likes" : "post_comments") };
       if (fait.ligne && recent(fait.ligne, "created_at", maintenant, fenetre)) return { ok: true, raison: "" };
       return { ok: false, raison: "aucun " + k + " récent de l'appelant sur cette publication" };
@@ -374,7 +380,7 @@ export async function lienEvenement(admin, kind, fromUid, toUserId, refId, maint
       const org = await organisateurDe(admin, ref);
       if (!estOrganisateur(org, toUserId)) return { ok: false, raison: "le destinataire n'organise pas cette activité" };
       const fait = k === "event_comment"
-        ? await unSeul(admin, "event_comments", [["event_id", ref], ["author_id", fromUid]])
+        ? await unSeul(admin, "event_comments", [["event_id", ref], ["author_id", fromUid]], "created_at")
         : await unSeul(admin, "event_attendees", [["event_id", ref], ["user_id", fromUid]]);
       if (fait.erreur) return { ok: false, raison: "lecture " + (k === "event_comment" ? "event_comments" : "event_attendees") };
       if (fait.ligne && recent(fait.ligne, k === "event_feedback" ? "rated_at" : "created_at", maintenant, fenetre)) return { ok: true, raison: "" };

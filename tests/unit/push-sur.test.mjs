@@ -4,7 +4,7 @@
 // ══════════════════════════════════════════
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { endpointPushSur, envoyerPushBorne, avecDelai, DELAI_PUSH_MS } from "../../supabase/functions/_shared/push-sur.js";
+import { endpointPushSur, envoyerPushBorne, avecDelai, abandonEnEchec, DELAI_PUSH_MS } from "../../supabase/functions/_shared/push-sur.js";
 
 const sub = (endpoint) => ({ endpoint, keys: { p256dh: "x", auth: "y" } });
 
@@ -65,4 +65,27 @@ test("⑥ le code d'erreur du service passe tel quel : un 410 reste un abonnemen
 test("⑦ avecDelai : la valeur de repli au-delà du délai, la vraie valeur sinon", async () => {
   assert.equal(await avecDelai(new Promise(() => {}), 10, "repli"), "repli");
   assert.equal(await avecDelai(Promise.resolve("ok"), 1000, "repli"), "ok");
+});
+
+// Sujet 156 (2026-11-27) : la veille borne les rappels par `avecDelai(…, 20 s, { abandon: "delai" })`
+// dans un Promise.allSettled — la sentinelle RÉSOUT, et le tour coupé passait pour « ok ».
+test("156 ① un tour abandonné par la borne devient un échec ; un vrai résultat passe tel quel", async () => {
+  const [coupe] = await Promise.allSettled([avecDelai(new Promise(() => {}), 10, { abandon: "delai" })]);
+  assert.equal(coupe.status, "fulfilled", "prémisse : avecDelai résout avec la sentinelle");
+  const r = abandonEnEchec(coupe);
+  assert.equal(r.status, "rejected");
+  assert.match(String(r.reason && r.reason.message), /delai/);
+  const ok = { status: "fulfilled", value: { activites: 1, dus: 2, envoyes: 2 } };
+  assert.equal(abandonEnEchec(ok), ok);
+  const ko = { status: "rejected", reason: new Error("panne") };
+  assert.equal(abandonEnEchec(ko), ko);
+  const inactif = { status: "fulfilled", value: { inactif: "VAPID absent" } };
+  assert.equal(abandonEnEchec(inactif), inactif);
+});
+
+test("156 ② la veille (pilotage/index.ts) passe le résultat des rappels par abandonEnEchec avant d'en juger", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync("supabase/functions/pilotage/index.ts", "utf8");
+  assert.match(src, /avecDelai\(rappels\(admin\), 20_000, \{ abandon: "delai" \}\)/);
+  assert.match(src, /const rap = abandonEnEchec\(rapBrut\);[\s\S]*if \(rap\.status === "rejected"\)/);
 });

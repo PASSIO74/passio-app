@@ -3922,6 +3922,7 @@ async function _loadEventReactions(ids) {
 function toggleEventLike(id, el) {
   // Mode invité : même porte que le « j'aime » d'une publication (PARC-01).
   if (window.requireAuthentication && !requireAuthentication("aimer")) return;
+  if (_interactionExempleRefusee(id)) return;   // sujet 199 : rien en base pour un exemple
   state.user.likedEvents = state.user.likedEvents || [];
   window._eventLikes = window._eventLikes || {};
   var cur = window._eventLikes[id] || { likes: 0, liked: false, emojiCounts: {} };
@@ -4113,34 +4114,84 @@ function applyEventGifReaction(eventId, gifUrl) {
 // agrégé window._eventLikes est ajusté en optimiste, l'état perso mémorisé dans
 // state.user.eventReactions (survit au reload) et Supabase resynchronisé (delete
 // de l'ancienne + insert de la nouvelle) pour rester cohérent cross-compte.
+// ⚠️ LA PORTE ET LE VERDICT (2026-11-27, sujet 148). Le correctif PARC-01 du cœur
+// (porte invité, état rétabli sur refus) n'avait pas été étendu aux emojis : un
+// visiteur « réagissait » en local, et une réaction REFUSÉE par la base (activité
+// privée fermée, blocage, débit, coupure) restait peinte et mémorisée, avec le
+// toast « Réaction envoyée » émis d'office par le panneau. Le retrait de
+// l'ancienne part AVANT la pose de la nouvelle (jamais en parallèle : l'ordre compte).
 function _setEventReaction(eventId, val) {
+  if (window.requireAuthentication && !requireAuthentication("aimer")) return;
+  if (_interactionExempleRefusee(eventId)) return;
   window._eventLikes = window._eventLikes || {};
   var d = window._eventLikes[eventId] || { likes: 0, liked: false, emojiCounts: {}, gifs: [] };
   d.emojiCounts = d.emojiCounts || {}; d.gifs = d.gifs || [];
   state.user.eventReactions = state.user.eventReactions || {};
   var prev = state.user.eventReactions[eventId];
   var isGif = function (x) { return /^https?:\/\//.test(x); };
-  // Retirer ma réaction précédente de l'agrégat + du serveur.
-  if (prev) {
-    if (isGif(prev)) d.gifs = d.gifs.filter(function (g) { return g !== prev; });
-    else { d.emojiCounts[prev] = Math.max(0, (d.emojiCounts[prev] || 1) - 1); if (!d.emojiCounts[prev]) delete d.emojiCounts[prev]; }
-    if (typeof supaRemoveEventReaction === "function") supaRemoveEventReaction(eventId, prev);
-  }
-  if (prev === val) { // re-tap de la même réaction → toggle off
-    delete state.user.eventReactions[eventId];
+  var retirer = function (x) {
+    if (isGif(x)) d.gifs = d.gifs.filter(function (g) { return g !== x; });
+    else { d.emojiCounts[x] = Math.max(0, (d.emojiCounts[x] || 1) - 1); if (!d.emojiCounts[x]) delete d.emojiCounts[x]; }
+  };
+  var poser = function (x) { if (isGif(x)) d.gifs.push(x); else d.emojiCounts[x] = (d.emojiCounts[x] || 0) + 1; };
+  var peindre = function () {
     window._eventLikes[eventId] = d;
     if (typeof saveState === "function") saveState();
     _patchEventReactChip(eventId);
+  };
+  var refusCompte = function () { return typeof _compteAuthReel === "function" && _compteAuthReel(); };
+  // Retirer ma réaction précédente de l'agrégat + du serveur.
+  var retrait = null;
+  if (prev) {
+    retirer(prev);
+    if (typeof supaRemoveEventReaction === "function") retrait = supaRemoveEventReaction(eventId, prev);
+  }
+  if (prev === val) { // re-tap de la même réaction → toggle off
+    delete state.user.eventReactions[eventId];
+    peindre();
+    Promise.resolve(retrait).then(function (ok) {
+      if (ok || !window._supaReal || !refusCompte()) return;
+      if (state.user.eventReactions[eventId]) return;   // un autre geste est passé depuis : il décide
+      state.user.eventReactions[eventId] = prev; poser(prev); peindre();
+      toast("Réaction non retirée — réessaie");
+    });
     return;
   }
   // Poser la nouvelle réaction.
-  if (isGif(val)) d.gifs.push(val); else d.emojiCounts[val] = (d.emojiCounts[val] || 0) + 1;
+  poser(val);
   state.user.eventReactions[eventId] = val;
-  window._eventLikes[eventId] = d;
-  if (typeof saveState === "function") saveState();
-  var ecriture = (typeof supaAddEventReaction === "function") ? supaAddEventReaction(eventId, val) : false;
-  _patchEventReactChip(eventId);
+  peindre();
+  var ecriture = Promise.resolve(retrait).then(function (retraitOk) {
+    var pose = (typeof supaAddEventReaction === "function") ? supaAddEventReaction(eventId, val) : false;
+    return Promise.resolve(pose).then(function (ok) {
+      if (ok) { toast("Réaction envoyée " + val); return true; }
+      if (!window._supaReal || !refusCompte()) { toast("Réaction envoyée " + val); return false; }   // local : la copie locale fait foi
+      if (state.user.eventReactions[eventId] !== val) return false;   // un autre geste est passé depuis
+      retirer(val);
+      // L'ancienne n'a pas pu partir non plus : elle est toujours en base, on la remontre.
+      if (prev && retrait && retraitOk === false) { state.user.eventReactions[eventId] = prev; poser(prev); }
+      else delete state.user.eventReactions[eventId];
+      peindre();
+      toast("Réaction non enregistrée — réessaie");
+      return false;
+    });
+  });
   _notifyEventOrganizerReaction(eventId, ecriture);
+}
+// ⚠️ UNE ACTIVITÉ D'EXEMPLE N'EXISTE PAS EN BASE (2026-11-27, sujet 199) : pour un
+// compte connecté, le j'aime, la réaction et le commentaire partaient vers
+// `event_reactions` / `event_comments` avec `event_id = 'e3'` — refusés par la clé
+// étrangère, puis « non enregistré — réessaie » (réessayer échouait toujours) ou,
+// pour la réaction, une pastille fantôme sans un mot. Même règle que la
+// participation (`PassioFirstRun.participationPossible`) : on le dit, rien ne part.
+// Hors compte réel (mode local, visiteur), la copie locale reste le comportement.
+function _interactionExempleRefusee(eventId) {
+  // `_supaReal` dit seulement que le SDK est chargé (visiteur compris) : il faut un
+  // COMPTE réel (uuid), seul cas où l'écriture part vraiment et se fait refuser.
+  if (!window._supaReal || typeof _compteAuthReel !== "function" || !_compteAuthReel()) return false;
+  if (!_estActiviteExemple({ id: eventId })) return false;
+  try { toast("Cette activité est un exemple : les j'aime, réactions et commentaires n'y sont pas enregistrés."); } catch (e) {}
+  return true;
 }
 // Au verdict de l'insertion de la réaction (SRV-02 : la base exige la réaction réelle).
 function _notifyEventOrganizerReaction(eventId, ecriture) {
@@ -4896,6 +4947,9 @@ function _ensureLocalEventConv(ev) {
 async function openEventChat(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
+  // Sujet 146 (2026-11-27) : une activité annulée ferme sa discussion en base,
+  // organisation comprise — dire POURQUOI, pas « nécessite la validation ».
+  if (_eventIsCancelled(ev)) { toast("Activité annulée — la discussion est fermée", "warning"); return; }
   if (myRsvp(id) !== "going" && !_canManageEvent(ev)) {
     toast(myRsvp(id) ? "La discussion est réservée à celles et ceux qui viennent : passe en « Je participe »" : "Rejoins l'activité pour accéder à la discussion");
     return;
@@ -5708,6 +5762,12 @@ function openEventDetails(id, remplaceModale = false) {
 
   if (_memoRerendu && _memoRerendu.commentairesLus) _renderEventComments(ev.id);
   else _loadEventComments(ev.id);
+  // Sujet 150 (2026-11-27) : les j'aime et réactions n'étaient lus que par le
+  // rendu de la LISTE — une fiche ouverte d'une notification, d'un lien ou d'un
+  // profil affichait 0, et le premier j'aime « 1 » quel que soit le total. Une
+  // activité du serveur seulement (les exemples gardent leurs chiffres de démo) ;
+  // un re-rendu (après un geste) ne relit pas.
+  if (ev.fromSupabase && !_isRerender) _loadEventReactions([ev.id]);
   const _album = document.getElementById("eventAlbum");
   if (_memoRerendu && _memoRerendu.album !== null && _album) _album.innerHTML = _memoRerendu.album;
   else _loadEventAlbum(ev.id);
@@ -6239,7 +6299,30 @@ function _checkEventReminders() {
       try { if (typeof renderBell === "function") renderBell(); } catch (_) {}
     }
   } catch (e) { try { diagLog("rappels : " + (e && e.message)); } catch (_) {} }
+  // Le passage est daté : il ARME la relance ci-dessous (jamais avant le premier
+  // passage de supaInit, qui juge sur `joinedEvents` hydraté).
+  window._rappelsPasseA = Date.now();
 }
+// ⚠️ LE RAPPEL ÉTAIT CALCULÉ AU DÉMARRAGE SEULEMENT (2026-11-27, sujet 138) : une
+// PWA laissée ouverte (ou mise en arrière-plan, jamais rechargée) ne voyait
+// jamais s'ouvrir le palier J-7 — supaInit n'est pas rappelé pour un compte déjà
+// connecté au lancement. Une relance bornée : au retour au premier plan et toutes
+// les 15 min, pas plus d'une fois par 10 min. `_checkEventReminders` est
+// idempotente (marques + identifiant déterministe `rappel_<id>:<palier>`).
+var RAPPELS_RELANCE_MIN_MS = 10 * 60 * 1000;
+function _rappelsRelancer() {
+  try {
+    if (!window._rappelsPasseA) return;                       // pas encore armé
+    if (typeof document !== "undefined" && document.hidden) return;
+    if (Date.now() - window._rappelsPasseA < RAPPELS_RELANCE_MIN_MS) return;
+    _checkEventReminders();
+  } catch (e) { try { diagLog("rappels : relance — " + (e && e.message)); } catch (_) {} }
+}
+try {
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) _rappelsRelancer(); });
+  window.addEventListener("pageshow", _rappelsRelancer);
+  setInterval(_rappelsRelancer, 15 * 60 * 1000);
+} catch (e) {}
 // ⚠️ Ce rappel-ci ne vit que DANS LA PAGE : appli fermée, il ne part pas. Les
 // paliers J-1 et H-2 partent AUSSI du serveur, en push (veille de pilotage,
 // supabase/functions/_shared/rappels.js, 2026-10-05) ; la cloche garde J-7.
@@ -6270,7 +6353,13 @@ function _irlWeeklyDigest() {
     if (localStorage.getItem(IRL_DIGEST_KEY) === wk) return;
 
     const now = Date.now();
-    const ref = _irlReferenceLoc();
+    // ⚠️ « PRÈS DE TOI » SANS POSITION (2026-11-27, sujet 158) : `_irlReferenceLoc()`
+    // rend Paris par défaut — un compte de Marseille sans ville choisie recevait
+    // « près de toi » compté à 60 km de Paris, et une activité sans lieu calculable
+    // comptait « proche » de n'importe quelle ville. Sans référence RÉELLE, le
+    // résumé ne prétend à aucune proximité ; avec, seule une distance mesurée compte.
+    const refReelle = _irlAReferenceReelle();
+    const ref = refReelle ? _irlReferenceLoc() : null;
     const myPassions = new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean));
     // ⚠️ LE RÉEL SEULEMENT (2026-11-09). `allEvents()` mêle les activités
     // d'exemple du seed : 12 comptes réels sur 13 avaient reçu « 11 événements
@@ -6284,8 +6373,9 @@ function _irlWeeklyDigest() {
       if (estExemple(e)) return false;
       if (_eventIsCancelled(e) || _eventEndAt(e) <= now || e.date > now + 7 * 86400000) return false;
       if ((state.user.joinedEvents || []).includes(e.id)) return false; // déjà inscrit
+      if (!refReelle) return true;
       const d = _eventDistanceKm(e, ref);
-      return d == null || d <= IRL_DIGEST_RADIUS_KM;
+      return d != null && d <= IRL_DIGEST_RADIUS_KM;
     });
     if (!soon.length) return;
 
@@ -6300,7 +6390,8 @@ function _irlWeeklyDigest() {
     const top = soon[0];
     const city = irlSelectedCity ? irlSelectedCity.name
       : (irlUserLocation ? getClosestCity(irlUserLocation.lat, irlUserLocation.lng) : "près de toi");
-    const text = `<b>${soon.length} activité${soon.length > 1 ? "s" : ""}</b> cette semaine ${escapeHtml(city === "près de toi" ? city : "à " + city)} — à commencer par <b>${escapeHtml(top.title || "")}</b>`;
+    const lieu = !refReelle ? "sur PASSIO" : (city === "près de toi" ? city : "à " + city);
+    const text = `<b>${soon.length} activité${soon.length > 1 ? "s" : ""}</b> cette semaine ${escapeHtml(lieu)} — à commencer par <b>${escapeHtml(top.title || "")}</b>`;
     // Identifiant par semaine : il distingue ce résumé, compté sur le réel, de
     // ceux d'avant le 2026-11-09 que `stripLegacyEconomy` retire (app-02).
     if (typeof pushNotification === "function") pushNotification(text, "📍", "me", { id: NOTIF_DIGEST_IRL_PREFIXE + wk });
@@ -6309,7 +6400,7 @@ function _irlWeeklyDigest() {
     if (typeof Notification !== "undefined" && Notification.permission === "granted"
         && navigator.serviceWorker && navigator.serviceWorker.ready) {
       navigator.serviceWorker.ready.then(reg => {
-        reg.showNotification("PASSIO — ça bouge près de toi", {
+        reg.showNotification(refReelle ? "PASSIO — ça bouge près de toi" : "PASSIO — cette semaine", {
           body: `${soon.length} activité${soon.length > 1 ? "s" : ""} cette semaine · ${top.title || ""}`,
           icon: "./icons/icon-192.png", tag: "irl-digest", data: { url: "./#irl-event-" + top.id },
         });
@@ -7211,6 +7302,8 @@ async function addEventComment(eventId) {
   if (!inp) return;
   var text = inp.value.trim();
   if (!text) return;
+  // Sujet 199 : un exemple n'a pas de discussion en base — le texte RESTE dans le champ.
+  if (_interactionExempleRefusee(eventId)) return;
   inp.value = "";
   return _envoyerCommentaireActivite(eventId, text, inp);
 }
@@ -7267,6 +7360,7 @@ async function _envoyerCommentaireActivite(eventId, text, inp, opts) {
 function _gifCommentaireActivite(eventId, gifUrl) {
   if (window.requireAuthentication && !requireAuthentication("commenter")) return false;
   if (!gifUrl) return false;
+  if (_interactionExempleRefusee(eventId)) return false;   // sujet 199
   _envoyerCommentaireActivite(eventId, String(gifUrl), null, { gif: true });
   return false;
 }
@@ -10709,9 +10803,14 @@ async function _prevenirInscrits(ev, genre, message, cle) {
       // sert 20 pushes par minute à un compte — les venants d'abord ; il relit la
       // ligne écrite par la base et tranche (origine serveur, organisation,
       // annulée, inscrit) : une ligne client `event_cancelled` ne pousse jamais.
-      if (typeof _pousserPushNotif === "function") {
-        cibles.slice(0, 20).forEach(function (uidTo) { _pousserPushNotif(uidTo, genre, ""); });
-      }
+      // Sujet 140 (2026-11-27) : la base a prévenu TOUS les inscrits, mais la push
+      // partait des 20 premiers de la liste LOCALE — rien du tout depuis un appareil
+      // qui ne les connaît pas encore, et les dates suivantes d'une série tombaient
+      // en 429. Liste locale vide → on relit les inscrits ; au-delà du plafond, la
+      // file reprend à la minute suivante (`_pousserPushInscrits`).
+      let aPousser = cibles;
+      if (!aPousser.length && v.destinataires > 0) aPousser = await _lireInscritsAPrevenir(ev.id);
+      _pousserPushInscrits(aPousser, genre);
       return { total: v.destinataires, prevenues: v.prevenues };
     }
     if (!v || !v.absente) {
@@ -10734,6 +10833,42 @@ async function _prevenirInscrits(ev, genre, message, cle) {
     catch (e) { return Promise.resolve(false); }
   }));
   return { total: cibles.length, prevenues: verdicts.filter(function (x) { return x === true; }).length };
+}
+// Les inscrits à réveiller, relus de la base quand l'appareil ne les connaît pas
+// (l'organisation lit toutes les lignes de son activité). Venants d'abord : l'ordre
+// alphabétique de `rsvp` est going < maybe < waitlist. Sans lecture : personne.
+async function _lireInscritsAPrevenir(eventId) {
+  try {
+    if (typeof supa === "undefined" || !supa || !eventId) return [];
+    const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+    const r = await supa.from("event_attendees").select("user_id,rsvp").eq("event_id", eventId)
+      .in("rsvp", ["going", "maybe", "waitlist"]).order("rsvp", { ascending: true }).limit(500);
+    if (!r || r.error) { try { diagLog("prévenir : relecture des inscrits — " + ((r && r.error && r.error.message) || "?")); } catch (e) {} return []; }
+    const vus = {};
+    return (r.data || []).map(function (x) { return x && x.user_id; })
+      .filter(function (u) { if (!u || u === meId || vus[u]) return false; vus[u] = true; return true; });
+  } catch (e) { try { diagLog("prévenir : relecture des inscrits — " + (e && e.message)); } catch (_) {} return []; }
+}
+// La push des inscrits, par lots sous le plafond de `notify-call` (20 invocations
+// par minute ET par appelant, toutes pushes confondues) : PUSH_INSCRITS_PAR_MINUTE
+// tout de suite, le reste à la minute suivante, tant que la page vit. La base a
+// déjà écrit chaque ligne de cloche : la push ne fait que réveiller. Une même
+// personne n'est pas réveillée deux fois pour le même genre dans la file.
+// ⚠️ PALLIATIF : la bonne réponse est UNE invocation « diffusion d'activité » que
+// la fonction sert elle-même depuis les lignes d'origine serveur (à préparer).
+var PUSH_INSCRITS_PAR_MINUTE = 20;
+var _filePushInscrits = [];
+function _pousserPushInscrits(uids, genre) {
+  (uids || []).forEach(function (u) {
+    if (!u || _filePushInscrits.some(function (x) { return x.uid === u && x.genre === genre; })) return;
+    _filePushInscrits.push({ uid: u, genre: genre });
+  });
+  _viderFilePushInscrits();
+}
+function _viderFilePushInscrits() {
+  if (window._filePushInscritsT || !_filePushInscrits.length || typeof _pousserPushNotif !== "function") return;
+  _filePushInscrits.splice(0, PUSH_INSCRITS_PAR_MINUTE).forEach(function (x) { _pousserPushNotif(x.uid, x.genre, ""); });
+  window._filePushInscritsT = setTimeout(function () { window._filePushInscritsT = null; _viderFilePushInscrits(); }, 61000);
 }
 // Nom historique, gardé pour les appelants : le texte est désormais DÉRIVÉ par la base.
 function _notifyEventAttendees(ev, text, kind) {

@@ -593,7 +593,9 @@ function showEmojiPickerForPost(postId, event) {
 function showEmojiPickerForEvent(eventId, event) {
   if (typeof emojiReactPanel === "function") {
     return emojiReactPanel(event,
-      function(e){ if (typeof applyEventEmojiReaction === "function") applyEventEmojiReaction(eventId, [e]); if (typeof toast === "function") toast("Réaction envoyée " + e); },
+      // Le toast d'une réaction emoji part au VERDICT de la base (`_setEventReaction`,
+      // sujet 148, 2026-11-27) : émis ici d'office, il annonçait aussi un refus.
+      function(e){ if (typeof applyEventEmojiReaction === "function") applyEventEmojiReaction(eventId, [e]); if (e === "❤️" && typeof toast === "function") toast("Réaction envoyée " + e); },
       // Le toast du GIF part au verdict de l'écriture (`_gifCommentaireActivite`,
       // sujet 151) : celui d'ici s'ajoutait au sien, même sur un refus.
       function(url){ if (typeof applyEventGifReaction === "function") applyEventGifReaction(eventId, url); });
