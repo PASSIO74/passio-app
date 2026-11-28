@@ -4,7 +4,7 @@
 // js/ui-v6a0-activite.js RANGE la modale d'openCreateEvent sans toucher au
 // moteur. Ce qui est tenu ici :
 //   ① la hiérarchie : couverture, Titre, Passion, Description, Quand, Où,
-//      Combien — puis « Plus d'options » (récurrence, contact, lien) ;
+//      Combien — puis les options dépliées (récurrence, contact, lien) ;
 //   ② la couverture est un vrai contrôle : rôle, tabulation, Entrée ouvre le
 //      sélecteur, nom qui suit l'état, « Retirer » hors de la zone ;
 //   ② bis un geste ouvre UN sélecteur, jamais deux ;
@@ -64,7 +64,7 @@ async function compterEnvois(page) {
 }
 
 test.describe("UI-6A0 — Créer une activité", () => {
-  test("① hiérarchie : la photo d'abord, l'essentiel ensuite, les options repliées", async ({ page }) => {
+  test("① hiérarchie : la photo d'abord, l'essentiel ensuite, les options dépliées", async ({ page }) => {
     await boot(page);
     await ouvrir(page);
     await expect(page.locator("#modalContent .modal-title")).toHaveText("Créer une activité");
@@ -79,7 +79,8 @@ test.describe("UI-6A0 — Créer une activité", () => {
     });
     expect(ordre).toBe("ok");
     for (const id of ["evRecurrence", "evContact", "evLink"]) {
-      expect(await page.evaluate((i) => !!document.getElementById(i).closest("details.v6a0-options"), id), `${id} dans « Plus d'options »`).toBe(true);
+      expect(await page.evaluate((i) => !!document.getElementById(i).closest("div.v6a0-options"), id), `${id} dans les options`).toBe(true);
+      await expect(page.locator("#" + id), `${id} visible sans clic`).toBeVisible();
     }
     // Rien n'est retiré : chaque champ du moteur est là, une seule fois.
     const uniques = await page.evaluate(() => ["evTitle", "evPassion", "evType", "evDate", "evTime", "evDuration", "evRecurrence",

@@ -11665,19 +11665,11 @@ button, a, label, select, summary,
 #modalContent.v6a0 .v6a0-quand > label:first-child { grid-column: 1 / -1; }
 #modalContent.v6a0 .v6a0-quand .input { min-width: 0; width: 100%; }
 
-/* ⑤ les options repliées */
+/* ⑤ les options, dépliées d'office */
 #modalContent.v6a0 .v6a0-options {
   margin: 6px 0 12px;
   border-top: 1px solid var(--border, rgba(0, 0, 0, 0.08));
   padding-top: 10px;
-}
-#modalContent.v6a0 .v6a0-options > summary {
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--accent, #7c3aed);
-  padding: 6px 0 10px;
-  list-style-position: inside;
 }
 
 /* ⑥ l'aperçu */
@@ -14858,13 +14850,6 @@ body:has(#storyViewer.active) .passio-hint { display: none !important; }
   padding: 0 14px;
   font-size: 13px;
 }
-.v6a0-options > summary {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  cursor: pointer;
-}
-
 /* b) Le champ fautif se voit, et son message aussi : `label.field > span`
    (le libellé en petites capitales grises) s'appliquait au message. */
 label.field > span.ev-champ-erreur {

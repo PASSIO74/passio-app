@@ -204,12 +204,10 @@
     apres(grille("evCity"));
     apres(grille("evMax"));
 
-    // ⑤ Plus d'options : récurrence, contact, lien (déplacés, rien n'est retiré)
-    var options = document.createElement("details");
+    // ⑤ Options : récurrence, contact, lien — DÉPLIÉES d'office (Benjamin,
+    // 2026-11-28 : « qu'on n'ait pas besoin de cliquer »). Plus de <details>.
+    var options = document.createElement("div");
     options.className = "v6a0-options";
-    var resume = document.createElement("summary");
-    resume.textContent = "Plus d'options";
-    options.appendChild(resume);
     [grille("evRecurrence"), champ("evContact"), champ("evLink")].forEach(function (n) { if (n) options.appendChild(n); });
     apres(options);
 
