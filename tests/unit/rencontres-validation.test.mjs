@@ -48,7 +48,7 @@ test('le refus efface la présence périmée, mais une lecture dépassée ne tou
   let repondre, rsvp='waitlist';
   const ev={id:'e',attendees:['orga','moi'],counts:{going:2}};
   const c=vm.createContext({window:{_supaReal:true,_openEventDetailId:'e'},MY_UID:'moi',
-   state:{seed:{events:[ev]}},_compteAuthReel:()=>true,_identiteDivergeDeLaSession:()=>false,
+   state:{seed:{events:[ev]}},_compteAuthReel:()=>true,_identiteDivergeDeLaSession:()=>false,_lireEtatRedemande:async()=>undefined,
    myRsvp:()=>rsvp,_setMyRsvpLocal:(id,v)=>{rsvp=v},saveState(){},_patchEventCardJoin(){},_refreshEventDetailIfOpen(){},
    supa:{rpc:()=>new Promise(resolve=>{repondre=resolve})},
    supaLireParticipants:async()=>({listesLues:true,comptesLus:true,attByEvent:{e:['orga']},maybeByEvent:{},
@@ -70,7 +70,7 @@ test('deux lectures du même refus réconcilient les participants même si la pr
  const lectures=[];
  const ev={id:'e',attendees:['orga','moi'],counts:{going:2}};
  const c=vm.createContext({window:{_supaReal:true,_openEventDetailId:'e'},MY_UID:'moi',
-  state:{seed:{events:[ev]}},_compteAuthReel:()=>true,_identiteDivergeDeLaSession:()=>false,
+  state:{seed:{events:[ev]}},_compteAuthReel:()=>true,_identiteDivergeDeLaSession:()=>false,_lireEtatRedemande:async()=>undefined,
   myRsvp:()=>null,_patchEventCardJoin(){},_refreshEventDetailIfOpen(){},
   supa:{rpc:async()=>({data:true})},supaLireParticipants:()=>new Promise(resolve=>lectures.push(resolve))});
  vm.runInContext("let _vueRefusSortie={id:'e',uid:'moi',lecture:0,refuse:false}; const _ecrituresRsvp=new Map();"
