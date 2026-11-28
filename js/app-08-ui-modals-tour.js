@@ -14784,7 +14784,10 @@ async function supaCheckInEvent(eventId) {
     const res = await supa.from("event_attendees")
       .update({ checked_in_at: new Date().toISOString() })
       .eq("event_id", eventId).eq("user_id", MY_UID).select("event_id");
-    if (res && res.error) { const m = /pointage_(hors_fenetre|annulee)/.exec(String(res.error.message || "")); if (m) window._irlRefusMotif = m[1]; }
+    // `pointage_non_valide` (2026-11-27, migration_rencontrer_serveur) : la base ne laisse
+    // plus pointer en direct qu'une participation VALIDÉE (ou l'organisation) — une ligne
+    // « je ne peux pas », en attente ou une demande passe par le code d'accueil.
+    if (res && res.error) { const m = /pointage_(hors_fenetre|annulee|non_valide)/.exec(String(res.error.message || "")); if (m) window._irlRefusMotif = m[1]; }
     return _writeVerdict(res, { expectRows: true, label: "check-in" }).ok;
   } catch(e) { return false; }
 }
@@ -14818,6 +14821,7 @@ async function supaPointerParCode(eventId, code) {
 // ⚠️ Si les colonnes manquaient (base pas encore migrée), on retire `feedback`
 // puis on retente en note seule, comme le fait supaPublishEvent pour ses colonnes.
 async function supaRateEvent(eventId, rating, feedback) {
+  window._noteRefusMotif = null;
   try {
     const payload = { rating: rating, feedback: feedback || null, rated_at: new Date().toISOString() };
     let res = await supa.from("event_attendees").update(payload)
@@ -14826,6 +14830,11 @@ async function supaRateEvent(eventId, rating, feedback) {
       res = await supa.from("event_attendees").update({ rating: rating })
         .eq("event_id", eventId).eq("user_id", MY_UID).select("event_id");
     }
+    // ⚠️ LA BASE TRANCHE QUI PEUT NOTER (2026-11-27, migration_rencontrer_serveur) :
+    // `note_avant_fin` (activité pas terminée, ou annulée) et `note_sans_participation`
+    // (ni pointé·e, ni participation validée). Le motif est gardé pour le message :
+    // « réessaie » laissait croire à une panne qu'un nouvel essai réparerait.
+    if (res && res.error) { const m = /note_(avant_fin|sans_participation)/.exec(String(res.error.message || "")); if (m) window._noteRefusMotif = m[1]; }
     // Noter suppose une ligne de participation : zéro ligne = note non enregistrée,
     // elle disparaissait au rechargement après avoir été annoncée comme prise.
     return _writeVerdict(res, { expectRows: true, label: "note d'événement" }).ok;
