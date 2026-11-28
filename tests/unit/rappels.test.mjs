@@ -298,6 +298,24 @@ test("⑨ quater activité REPORTÉE d'une semaine : son rappel repart — la ma
   assert.equal(r.dejaPris, 0);
 });
 
+test("⑨ quinquies activité REPORTÉE de 24 h dans la fenêtre de 3 jours : son rappel repart (sujet 137), et un même départ reste à UNE push", async () => {
+  // Réinjection éprouvée : sans le départ dans la marque, la seconde push ne part
+  // pas — la marque de la veille est encore lue (fenêtre de 3 jours).
+  let maintenant = T0;
+  const ev = activite(T0 + H, { author_id: null });
+  const subs = [{ endpoint: "https://fcm.googleapis.com/fcm/send/a", user_id: A, subscription: { endpoint: "https://fcm.googleapis.com/fcm/send/a" } }];
+  const admin = fauxAdmin({ events: [ev], attendees: [inscrit(A, "going", T0 - 10 * 864e5)], subs, horloge: () => new Date(maintenant).toISOString() });
+  const envois = [];
+  const envoyer = async (s) => { envois.push(s.endpoint); };
+  assert.equal((await envoyerRappels(admin, envoyer, maintenant, S)).envoyes, 1, "le rappel de la date d'origine");
+  assert.equal((await envoyerRappels(admin, envoyer, maintenant + 60e3, S)).envoyes, 0, "même départ, second tour : rien de plus");
+  ev.date_at = naif(T0 + 864e5 + H);
+  maintenant = T0 + 864e5;
+  const r = await envoyerRappels(admin, envoyer, maintenant, S);
+  assert.equal(envois.length, 2, "la date reportée a son propre rappel");
+  assert.equal(r.envoyes, 1);
+});
+
 test("⑩ quinquies un compte qui organise 121 activités à la même heure ne coupe PLUS les rappels de tout le monde (trg_rate_limit : 120 lignes par minute et par user_id)", async () => {
   // Réinjection éprouvée : sans MAX_PAR_COMPTE, le lot de marques lève sur la
   // limite et AUCUN rappel ne part — pour personne, à chaque tour.

@@ -185,7 +185,10 @@ export function rappelsDus({ maintenant, activites, participants, dejaEnvoyes, m
       // (Une date illisible est traitée comme ancienne : mieux vaut rappeler.)
       if (d.inscrit > ouverture) continue;
       const cle = cleRappel(a.id, palier.cle, d.uid);
-      if (deja.has(cle) || prises.has(cle)) continue;
+      // Une marque porte son DÉPART depuis le 2026-11-28 (sujet 137) : une activité
+      // reportée est une autre échéance, son palier se rejoue. Une marque ancienne,
+      // sans départ, vaut encore pour tout départ le temps de sa fenêtre (3 jours).
+      if (deja.has(cle) || deja.has(cle + "|" + debut) || prises.has(cle)) continue;
       const n = parCompte.get(d.uid) || 0;
       if (n >= MAX_PAR_COMPTE) continue;
       parCompte.set(d.uid, n + 1);
@@ -257,7 +260,11 @@ export async function envoyerRappels(admin, envoyer, maintenant = Date.now(), se
     const marques = await toutesLesPages(() => admin.from("analytics_events")
       .select("properties").eq("event", MARQUE_EVENEMENT).in("user_id", uids)
       .gte("created_at", new Date(maintenant - 3 * 864e5).toISOString()).order("id", { ascending: true }));
-    for (const m of marques) if (m && m.properties && m.properties.cle) dejaEnvoyes.add(m.properties.cle);
+    for (const m of marques) {
+      if (!m || !m.properties || !m.properties.cle) continue;
+      const dep = m.properties.depart;
+      dejaEnvoyes.add(dep == null ? m.properties.cle : m.properties.cle + "|" + dep);
+    }
   }
 
   const dus = rappelsDus({ maintenant, activites, participants, dejaEnvoyes });
@@ -275,7 +282,7 @@ export async function envoyerRappels(admin, envoyer, maintenant = Date.now(), se
   // Refusée (ou secret serveur absent : `idGeste` lève) → on lève et RIEN ne part.
   const lignes = await Promise.all(dus.map(async (r) => ({
     id: await idGeste(`rappel:${r.cle}:${r.debut}`, secret),
-    user_id: marqueUid(r.uid), event: MARQUE_EVENEMENT, properties: { cle: r.cle, palier: r.palier },
+    user_id: marqueUid(r.uid), event: MARQUE_EVENEMENT, properties: { cle: r.cle, palier: r.palier, depart: r.debut },
   })));
   const { data: posees, error: e4 } = await admin.from("analytics_events")
     .upsert(lignes, { onConflict: "id", ignoreDuplicates: true }).select("id");
