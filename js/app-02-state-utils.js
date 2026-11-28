@@ -5858,6 +5858,9 @@ var ACCOUNT_SCOPED_KEYS = [
   // Ajoutée le 2026-10-23 : les dernières villes choisies dans « Rencontrer »
   // (app-07, `irlVillesRecentes`). Une donnée de LIEU de la personne.
   "passio_irl_villes_recentes_v1",
+  // Ajoutée le 2026-11-28 (sujet 123) : la ville de référence choisie à la main
+  // (app-07, `_irlVilleEcrire`). Elle porte aussi son propriétaire.
+  "passio_irl_ville_reference_v1",
   // Ajoutées le 2026-11-06 (audit) : encore des lieux cherchés et des choix de la
   // personne, restés lisibles sur l'appareil après la déconnexion.
   "passio_geo_cache_v1",        // adresses géocodées (app-07)
