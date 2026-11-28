@@ -17,7 +17,7 @@ function extraireFonction(source,name){
  assert.fail('fonction complète introuvable : '+name);
 }
 function fn(name){return extraireFonction(client,name);}
-function contexte(extra={}){let messages=[];let ouvert=0;const c=vm.createContext({state:{},_pousserPushNotif:()=>{},toast:x=>messages.push(x),window:{_supaReal:true},_findCanonicalEvent:()=>({id:'e',convId:'evgrp_e'}),_canManageEvent:()=>true,openEventParticipantValidation:async()=>{ouvert++},...extra});return {c,messages,get ouvert(){return ouvert}};}
+function contexte(extra={}){let messages=[];let ouvert=0;const c=vm.createContext({state:{},_pousserPushNotif:()=>{},toast:x=>messages.push(x),window:{_supaReal:true},_findCanonicalEvent:()=>({id:'e',convId:'evgrp_e'}),_canManageEvent:()=>true,openEventParticipantValidation:async()=>{ouvert++},_poserDemandesAValider:()=>{},_retraitParticipantEnAttente:()=>false,...extra});return {c,messages,get ouvert(){return ouvert}};}
 test('un refus ou zéro ligne de la RPC ne devient jamais un succès local',async()=>{
  for(const reponse of [{data:false},{data:null},{error:{code:'42501'}}]){const t=contexte({supa:{rpc:async()=>reponse}});vm.runInContext(fn('validerEventParticipant'),t.c);assert.equal(await t.c.validerEventParticipant('e','u',true),false);assert.equal(t.ouvert,0);assert.match(t.messages[0],/non confirmée/);}
 });
@@ -33,7 +33,7 @@ test('une demande confirmée réveille l’organisation sans doubler sa notifica
    _ajusterCompteInscrits:()=>{},_setMyRsvpLocal:()=>{},saveState:()=>{},_patchEventCardJoin:()=>{},
    _refreshEventDetailIfOpen:()=>{},supaSetEventRsvp:async()=>reponse,irlFunnelTrackJoin:()=>{},
    _majAdresseActivite:()=>{},signalerChangementSortie:()=>{relectures++},proposerRappelsActivite:()=>{},pushNotification:()=>{},escapeHtml:x=>x,
-   toast:()=>{},_joinEventConversation:()=>{},_leaveEventConversation:()=>{},
+   toast:()=>{},_joinEventConversation:()=>{},_leaveEventConversation:()=>{},_etatParticipationAffiche:()=>'demande',
    supaInsertNotif:(...args)=>insertions.push(args),_pousserPushNotif:(...args)=>pushes.push(args)});
   // (2026-11-27) setEventRsvp est la FILE par activité ; le moteur est _setEventRsvpUn.
   vm.runInContext("let _vueRefusSortie=null; const _ecrituresRsvp=new Map(); const _fileRsvp=new Map(); const _rsvpRegleA={}; const _rsvpPosees=new Set(); var state={userEvents:[],seed:{events:[]}};"+fn('_suspendreLectureRefus')+fn('_sortiePourParticipation')+fn('_convergerApresRefus')+fn('_setEventRsvpUn')+fn('setEventRsvp'),c);await c.setEventRsvp('e','going');

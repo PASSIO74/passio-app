@@ -442,7 +442,9 @@ test.describe("Rencontrer — carte et fiche d'activité", () => {
     const t = await ouvrir(browser, srv, C, "cleo_fic");
     const v = await ouvrir(browser, srv, null);
     try {
-      const surPlace = (p) => p.locator("#eventDetailContent").getByRole("button", { name: "Je suis sur place" });
+      // 2026-11-27 (ergonomie e) : pendant la fenêtre de pointage, l'action est AU PIED
+      // (« Je suis arrivé·e ») et le bouton du corps, doublon, est masqué : on cherche les deux.
+      const surPlace = (p) => p.locator("#eventDetailPage").getByRole("button", { name: /^(Je suis sur place|Je suis arrivé·e)$/ });
       await charger(b.page, { evt_fic_15: "going" });
       await b.page.evaluate(() => openEventDetails("evt_fic_15"));
       await expect(surPlace(b.page), "témoin : l'inscrit le voit").toHaveCount(1);

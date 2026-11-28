@@ -610,7 +610,8 @@
     // activité) et l'EXEMPLE (IRL-C66 : bouton actif, refus seulement après).
     var orga = estOrganisation(ev);
     var exemple = !orga && estExemple(ev);
-    var sig = (etat || "none") + (vu ? "|" + vu : "") + (complet ? "|full" : "") + (orga ? "|orga:" + nbInscrits(ev, "going") : "") + (exemple ? "|exemple" : "");
+    var pointer = !orga && !exemple && etat === "going" && peutPointer(ev);
+    var sig = (etat || "none") + (vu ? "|" + vu : "") + (complet ? "|full" : "") + (orga ? "|orga:" + nbInscrits(ev, "going") : "") + (exemple ? "|exemple" : "") + (pointer ? "|pointer" : "");
     // ⚠️ Le marqueur vit sur le nœud INJECTÉ, jamais sur `#eventDetailCta` : le
     // moteur historique repeint la barre par `innerHTML`, ce qui efface les
     // enfants mais conserve les attributs de l'hôte. Un marqueur posé sur l'hôte
@@ -619,8 +620,19 @@
     if (box && box.getAttribute("data-v4b-rsvp") === sig) return false;
 
     cta.innerHTML = "";
-    cta.appendChild(orga ? construireCtaOrga(sig, ev) : exemple ? construireCtaExemple(sig) : construireCta(sig, etat, complet, vu));
+    cta.appendChild(orga ? construireCtaOrga(sig, ev) : exemple ? construireCtaExemple(sig) : construireCta(sig, etat, complet, vu, pointer));
     return true;
+  }
+
+  // 2026-11-27 (ergonomie e) : PENDANT l'activité (de 1 h avant à la fin), l'action
+  // du moment est de pointer son arrivée — elle était enfouie au milieu de la
+  // fiche. Mêmes conditions que le bouton du corps (fenêtre de pointage, pas déjà
+  // pointé) ; le moteur `checkInEvent` reste seul juge (position ou code, base).
+  function peutPointer(ev) {
+    try {
+      return typeof _canCheckIn === "function" && typeof _hasCheckedIn === "function"
+        && typeof checkInEvent === "function" && !estDemo(ev.id) && _canCheckIn(ev) && !_hasCheckedIn(ev);
+    } catch (e) { fail("etat_pointer", e); return false; }
   }
 
   function estOrganisation(ev) {
@@ -695,7 +707,7 @@
     return etat === "going" ? LIBELLE_RSVP_FAIT : LIBELLE_RSVP_ATTENTE;
   }
 
-  function construireCta(sig, etat, complet, vu) {
+  function construireCta(sig, etat, complet, vu, pointer) {
     var box = document.createElement("div");
     box.className = "v4b-rsvp";
     box.setAttribute("data-v4b-rsvp", sig);
@@ -711,6 +723,9 @@
     // à l'écart, et inerte pendant RETRAIT_GARDE_MS après l'inscription.
     if (etat === "going" || etat === "waitlist") {
       box.classList.add("v4b-rsvp-inscrit");
+      // 2026-11-27 (revue visuelle) : demande, place validée et liste d'attente
+      // avaient le MÊME pied vert. Une classe par état ; la couleur suit (styles.css).
+      box.classList.add("v4b-etat-" + (etat === "waitlist" ? "attente" : (vu || "confirmee")));
       var st = document.createElement("div");
       st.className = "v4b-rsvp-etat";
       st.setAttribute("data-v4b-rsvp-etat", etat);
@@ -733,7 +748,23 @@
       var rmInscrit = construireRetrait();
       if (etat === "waitlist") rmInscrit.textContent = "Quitter la liste d'attente";
       box.appendChild(rmInscrit);
-      if (etat === "going") {
+      if (etat === "going" && pointer) {
+        var suiteP = document.createElement("div");
+        suiteP.className = "v4b-rsvp-suite v4b-rsvp-suite-pointer";
+        var pt = document.createElement("button");
+        pt.type = "button";
+        pt.className = "btn primary v4b-rsvp-pointer";
+        pt.setAttribute("data-v4b-rsvp-pointer", "1");
+        pt.textContent = "Je suis arrivé·e";
+        suiteP.appendChild(pt);
+        var chatP = document.createElement("button");
+        chatP.type = "button";
+        chatP.className = "btn ghost v4b-rsvp-chat";
+        chatP.setAttribute("data-v4b-rsvp-chat", "1");
+        chatP.textContent = "Écrire aux participants";
+        suiteP.appendChild(chatP);
+        box.appendChild(suiteP);
+      } else if (etat === "going") {
         var suite = document.createElement("div");
         suite.className = "v4b-rsvp-suite";
         var chat = document.createElement("button");
@@ -776,6 +807,7 @@
   var DOUBLONS_DU_PIED = [
     { pied: "[data-v4b-rsvp-chat]", corps: /^\s*openEventChat\(/ },
     { pied: "[data-v4b-rsvp-gerer]", corps: /^\s*openEventManage\(/ },
+    { pied: "[data-v4b-rsvp-pointer]", corps: /^\s*checkInEvent\(/ },
   ];
   function masquerDoublonsDuPied() {
     var content = document.getElementById("eventDetailContent");
@@ -803,6 +835,31 @@
       if (vide) { s.style.display = "none"; s.setAttribute("data-v4b-sec-vide", "1"); }
       else if (s.getAttribute("data-v4b-sec-vide")) { s.style.display = ""; s.removeAttribute("data-v4b-sec-vide"); }
     }
+  }
+
+  // 2026-11-27 (ergonomie a) : l'organisation voit EN TÊTE de sa fiche les
+  // demandes de participation qui attendent sa réponse. Le nombre est celui de la
+  // base (`demandesAValider`, app-07) ; tant qu'il n'est pas connu, rien.
+  function peindreDemandes() {
+    var racine = document.querySelector("#eventDetailContent > .v4b-fiche");
+    if (!racine) return;
+    var ev = evenementCourant();
+    var b = racine.querySelector(":scope > [data-v4b-demandes]");
+    var n = null;
+    if (ev && estOrganisation(ev) && typeof demandesAValider === "function") {
+      n = demandesAValider(ev.id);
+      try { if (typeof rafraichirDemandesAValider === "function") rafraichirDemandesAValider(ev.id); } catch (e) { fail("demandes_lire", e); }
+    }
+    if (!(n > 0)) { if (b) b.remove(); return; }
+    if (!b) {
+      b = document.createElement("button");
+      b.type = "button";
+      b.className = "btn primary block v4b-demandes";
+      b.setAttribute("data-v4b-demandes", "1");
+      racine.insertBefore(b, racine.firstChild);
+    }
+    var texte = typeof texteDemandesAValider === "function" ? texteDemandesAValider(n) : n + " à valider";
+    if (b.textContent !== texte) b.textContent = texte;
   }
 
   function construireRetrait() {
@@ -914,6 +971,9 @@
       }
       appliquerCta();
       masquerDoublonsDuPied();
+      peindreDemandes();
+      var pg = pageFiche();
+      if (pg && pg.scrollTop <= 40 && pg.classList.contains("v4b-defile")) pg.classList.remove("v4b-defile");
     } catch (e) {
       // Une fiche à moitié réorganisée doit rester LISIBLE : on rend la main au
       // moteur historique plutôt que de laisser un écran cassé.
@@ -944,6 +1004,17 @@
     if (content) observateur.observe(content, { childList: true });
     var cta = document.getElementById("eventDetailCta");
     if (cta) observateur.observe(cta, { childList: true });
+    // 2026-11-27 (ergonomie g) : à 320 px, héros + pied ne laissaient que 17 % de
+    // l'écran au contenu. Dès qu'on lit (la fiche défile), le pied passe en forme
+    // COMPACTE (styles.css, `.v4b-defile`) : aucune action ne disparaît, seul le
+    // rappel de la date — déjà dans « Le rendez-vous » — se tait.
+    if (!page._v4bDefile) {
+      page._v4bDefile = true;
+      page.addEventListener("scroll", function () {
+        var d = page.scrollTop > 40;
+        if (page.classList.contains("v4b-defile") !== d) page.classList.toggle("v4b-defile", d);
+      }, { passive: true });
+    }
   }
 
   // Délégation unique : la barre d'action est reconstruite en permanence, un
@@ -966,6 +1037,22 @@
       var evI = evenementCourant();
       track("ui_v4b_rsvp_suite", { v: VERSION, quoi: "inviter" });
       try { if (evI && typeof openEventInvite === "function") openEventInvite(evI.id); } catch (x) { fail("rsvp_inviter", x); }
+      return;
+    }
+    var pointe = e.target.closest("[data-v4b-rsvp-pointer]");
+    if (pointe) {
+      e.preventDefault(); e.stopPropagation();
+      var evP = evenementCourant();
+      track("ui_v4b_rsvp_suite", { v: VERSION, quoi: "pointer" });
+      try { if (evP && typeof checkInEvent === "function") checkInEvent(evP.id); } catch (x) { fail("rsvp_pointer", x); }
+      return;
+    }
+    var dem = e.target.closest("[data-v4b-demandes]");
+    if (dem) {
+      e.preventDefault(); e.stopPropagation();
+      var evD = evenementCourant();
+      track("ui_v4b_rsvp_suite", { v: VERSION, quoi: "demandes" });
+      try { if (evD && typeof openEventParticipantValidation === "function") openEventParticipantValidation(evD.id); } catch (x) { fail("demandes", x); }
       return;
     }
     var gerer = e.target.closest("[data-v4b-rsvp-gerer]");

@@ -235,6 +235,21 @@
   // courant recevrait « Je viens » alors que la carte historique, elle,
   // affichait « Organisé ». Deux surfaces ne peuvent pas dire l'inverse l'une
   // de l'autre sur la même activité.
+  // 2026-11-27 (ergonomie a) : les demandes de participation qui attendent
+  // l'organisation. Le nombre est celui de la BASE (`demandesAValider`, app-07,
+  // lu par `participants_validation`) ; inconnu = rien d'affiché, jamais 0 inventé.
+  function demandesCarte(ev) {
+    try {
+      if (!ev || typeof demandesAValider !== "function" || !estMien(ev) || estAnnule(ev) || estTermine(ev)) return null;
+      return demandesAValider(ev.id);
+    } catch (e) { fail("demandes", e); return null; }
+  }
+  function lireDemandes(ev) {
+    try {
+      if (ev && typeof rafraichirDemandesAValider === "function" && estMien(ev) && !estAnnule(ev) && !estTermine(ev)) rafraichirDemandesAValider(ev.id);
+    } catch (e) { fail("demandes_lire", e); }
+  }
+
   function estMien(ev) {
     try { if (typeof _isMyEvent === "function" && _isMyEvent(ev)) return true; }
     catch (e) { fail("etat_mien", e); }
@@ -563,6 +578,7 @@
       estAnnule(ev) ? "x" : "-",
       estTermine(ev) ? "o" : "-",
       estEnCours(ev) ? "l" : "-",
+      String(demandesCarte(ev)),
     ].join("|");
   }
 
@@ -606,6 +622,20 @@
     monde.className = "v4a2-l v4a2-monde";
     corps.appendChild(monde);
 
+    var dem = document.createElement("button");
+    dem.type = "button";
+    dem.className = "v4a2-demandes";
+    dem.setAttribute("data-v4a2-demandes", "1");
+    dem.hidden = true;
+    // Dans une carte cliquable : le geste ouvre la validation, pas la fiche.
+    dem.addEventListener("click", function (e) {
+      e.stopPropagation();
+      track("ui_v4a2_demandes", { v: VERSION });
+      try { if (typeof openEventParticipantValidation === "function") openEventParticipantValidation(ev.id); } catch (x) { fail("demandes_ouvrir", x); }
+    });
+    dem.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); });
+    corps.appendChild(dem);
+
     var actions = document.createElement("div");
     actions.className = "v4a2-actions";
     // Les actions sont DANS une carte elle-même cliquable (`openEventDetails`
@@ -640,6 +670,12 @@
     m.textContent = ligneMonde(ev);
     var pv = bloc.querySelector(".v4a2-privee");
     if (pv) pv.hidden = !estPrivee(ev);
+    var dm = bloc.querySelector(".v4a2-demandes");
+    if (dm) {
+      var nd = demandesCarte(ev);
+      dm.hidden = !(nd > 0);
+      if (nd > 0) dm.textContent = typeof texteDemandesAValider === "function" ? texteDemandesAValider(nd) : String(nd);
+    }
 
     while (a.firstChild) a.removeChild(a.firstChild);
 
@@ -727,6 +763,7 @@
     // laisserait, si la peinture échouait, un bloc vide dans une carte que le
     // marqueur ne couvre pas — deux surfaces à moitié posées valent moins que
     // la carte historique intacte.
+    lireDemandes(ev);
     var bloc = carte.querySelector(":scope > ." + CLASSE_BLOC);
     var neuf = !bloc;
     if (neuf) bloc = construireBloc(ev);

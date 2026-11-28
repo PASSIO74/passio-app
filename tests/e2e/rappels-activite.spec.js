@@ -137,8 +137,10 @@ test.describe("Rappels d'activité — le tap ouvre l'activité", () => {
   test("⑤ inscription CONFIRMÉE : la proposition s'ouvre, « Activer » demande la permission puis abonne", async ({ page }) => {
     await bancInscription(page, { permission: "default" });
     await page.evaluate((id) => setEventRsvp(id, "going"), EVENT_SEED);
-    await expect(page.locator("#modalBackdrop.active #_rappelsOuiBtn")).toBeVisible();
-    const sous = await page.locator("#modalBackdrop.active .modal-subtitle").textContent();
+    // 2026-11-27 (ergonomie d) : un BANDEAU non bloquant, plus une feuille sur la fiche.
+    await expect(page.locator("#bandeauRappels #_rappelsOuiBtn")).toBeVisible();
+    await expect(page.locator("#modalBackdrop.active")).toHaveCount(0);
+    const sous = await page.locator("#bandeauRappels .bandeau-rappels-sous").textContent();
     expect(sous).toContain("la veille et 2 h avant");
     expect(sous).toContain("Jam session");
     await page.locator("#_rappelsOuiBtn").click();
@@ -154,7 +156,7 @@ test.describe("Rappels d'activité — le tap ouvre l'activité", () => {
     await bancInscription(page, { permission: "default", rsvpOk: false });
     await page.evaluate((id) => setEventRsvp(id, "going"), EVENT_SEED);
     await page.waitForTimeout(300);
-    expect(await page.evaluate(() => !!document.querySelector("#modalBackdrop.active #_rappelsOuiBtn"))).toBe(false);
+    expect(await page.evaluate(() => !!document.querySelector("#_rappelsOuiBtn"))).toBe(false);
   });
 
   test("⑦ le verdict se tait hors du bon moment ; permission déjà accordée → abonnement SILENCIEUX", async ({ page }) => {
@@ -187,14 +189,14 @@ test.describe("Rappels d'activité — le tap ouvre l'activité", () => {
     expect(v).toEqual({ proposer: "proposer", tropTard: "trop_tard", repos: "repos", reposFini: "proposer",
       fenetre: "fenetre_ouverte", visiteur: "sans_compte", refuse: "refuse", coupe: "coupe", abonner: "abonner" });
     expect(await page.evaluate(() => window.__abonnements)).toBe(1);
-    expect(await page.evaluate(() => !!document.querySelector("#modalBackdrop.active #_rappelsOuiBtn"))).toBe(false);
+    expect(await page.evaluate(() => !!document.querySelector("#_rappelsOuiBtn"))).toBe(false);
   });
 
   test("⑧ « Plus tard » ferme sans rien demander, et la proposition se tait 14 jours", async ({ page }) => {
     await bancInscription(page, { permission: "default" });
     await page.evaluate((id) => setEventRsvp(id, "going"), EVENT_SEED);
-    await page.locator("#modalBackdrop.active").getByText("Plus tard").click();
-    await expect(page.locator("#modalBackdrop.active")).toHaveCount(0);
+    await page.locator("#bandeauRappels").getByText("Plus tard").click();
+    await expect(page.locator("#bandeauRappels")).toHaveCount(0);
     const r = await page.evaluate((id) => ({ demandes: window.__demandes,
       ensuite: _rappelsVerdict(_findCanonicalEvent(id), Date.now()) }), EVENT_SEED);
     expect(r.demandes).toBe(0);
