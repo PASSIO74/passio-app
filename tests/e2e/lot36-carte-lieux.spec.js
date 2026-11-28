@@ -79,7 +79,7 @@ test("② IRL-C15 : un même lieu = une pastille chiffrée qui liste ses activit
   ]);
   expect(r.n).toBe(2);
   expect(r.texte).toBe("3");
-  expect(r.nom).toBe("3 activités à cet endroit");
+  expect(r.nom).toBe("3 activités dans ce secteur");
   expect(r.lignes.sort()).toEqual(["Atelier chant", "Jam du mardi", "Scène ouverte"]);
 });
 

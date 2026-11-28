@@ -1121,6 +1121,13 @@
     } catch (e) { fail("boot", e); }
   }
 
+  // Coupure ou levée distante en cours de session (reglages-distants.js,
+  // 2026-11-27) : déposer le lot AVANT UI-4A4 et UI-4A3, qui diffèrent la leur
+  // d'un tour — les nœuds déménagés doivent rentrer chez eux d'abord.
+  window.addEventListener("passio:coupures", function () {
+    try { apply(); } catch (e) { fail("coupures", e); }
+  });
+
   // Surface publique unique (aucun global top-level : `audit:globals` reste vert).
   window.PassioUIV4A5 = {
     isEnabled: uiV4a5Enabled,

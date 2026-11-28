@@ -1627,9 +1627,9 @@
 
 <script src="js/idb-store.js"></script>
 <!-- PREMIÈRE VISITE (drapeau `first_run_experience_v1`) — composant autonome
-     (IIFE window.PassioFirstRun), COUPÉ par défaut ; activé par
-     ?passio_preview=first-run-v1 ou localStorage.passio_first_run_experience_v1="1",
-     coupé par "0" ou window.PASSIO_FIRST_RUN_V1=false.
+     (IIFE window.PassioFirstRun), ACTIF PAR DÉFAUT (mise à jour du 2026-11-27 :
+     ce commentaire le disait encore coupé) ; coupé par
+     localStorage.passio_first_run_experience_v1="0" ou window.PASSIO_FIRST_RUN_V1=false.
 
      ⚠️ PLACÉ AVANT LE BLOC APP, ET C'EST OBLIGATOIRE. `app-09` lance
      `(window.__gateReady || Promise.resolve()).then(() => boot())` : quand le
@@ -1822,8 +1822,8 @@
      L'ORDRE COMPTE : le sélecteur lit `window.PassioPassions`, la colle lit
      `window.PassionSearchSelector`.
 
-     ÉTEINT PAR DÉFAUT — aperçu seulement :
-       ?passio_preview=flat-passions-v1   ·   ?flat_passions_v1=1
+     ACTIF PAR DÉFAUT (mise à jour du 2026-11-27 : ce commentaire le disait
+     encore éteint).
      Coupures, prioritaires : localStorage.flat_passions_v1 = "0"
                               window.PASSIO_FLAT_PASSIONS = false
      Ces trois fichiers sont HORS du bloc BUILD:APP (invariant : exactement

@@ -387,7 +387,9 @@
     if (km != null && km < 20000 && typeof _fmtDistance === "function") {
       try {
         var d = _fmtDistance(km);
-        if (d) bouts.push("environ " + d);
+        // « moins d'1 km » se lit seul (2026-11-27) : « environ moins d'1 km »
+        // n'est pas une phrase.
+        if (d) bouts.push(/^moins/.test(d) ? d : "environ " + d);
       } catch (e) { fail("distance_fmt", e); }
     }
     return bouts.join(" · ");

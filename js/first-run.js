@@ -806,7 +806,7 @@
   // la participation à une activité fictive.
   function evenementDemo(ev) {
     if (!ev) return false;
-    // Une activité venue du serveur porte un uuid ; les 36 activités livrées
+    // Une activité venue du serveur porte un identifiant long (jamais « e<N> ») ; les 36 activités livrées
     // dans `app-01-diag-seed.js` portent toutes un identifiant court posé par
     // `buildSeed` (« e1 », « e2 »…). C'est le SEUL discriminant sûr.
     //
