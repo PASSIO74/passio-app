@@ -206,6 +206,8 @@ test.describe("Télémétrie — flow RSVP réglé au verdict", () => {
     expect(src).toMatch(/if \(window\._supaReal && window\.tel && tel\.flowStart\) _rsvpCid = tel\.flowStart\(/);
     // Les deux verdicts (inscription et désinscription) règlent le flow.
     expect((src.match(/_rsvpRegle\(true\)/g) || []).length).toBe(2);
-    expect(src).toMatch(/_rsvpRegle\(false, \(rsvp && window\._irlRefusMotif\) \|\| \(rsvp && _mineur \? "majorite" : "refus"\)\)/);
+    // Le motif fermé vient du serveur ; une redemande bornée (`redemande_*`, 2026-11-28) se range sous « limite ».
+    expect(src).toMatch(/const _motifRc = window\._irlRefusMotif && \/\^redemande_\/\.test\(window\._irlRefusMotif\) \? "limite" : window\._irlRefusMotif;/);
+    expect(src).toMatch(/_rsvpRegle\(false, \(rsvp && _motifRc\) \|\| \(rsvp && _mineur \? "majorite" : "refus"\)\)/);
   });
 });
