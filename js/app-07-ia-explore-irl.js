@@ -9687,6 +9687,11 @@ async function deleteEventConfirm(id) {
   _setMyRsvpLocal(id, null);
   try { retirerCarteActiviteDuFil(id); }
   catch (e) { try { if (typeof diagLog === "function") diagLog("suppression activité : carte du fil " + (e && e.message)); } catch (_) {} }
+  // …et sa DISCUSSION (2026-11-28, sujet 227). La base la purge avec l'activité ;
+  // le miroir local restait dans ma messagerie — au redémarrage aussi, la fusion
+  // gardant les conversations locales absentes du serveur — pour une activité qui
+  // n'existe plus. Pierre tombale : l'identifiant ne servira plus jamais.
+  _retirerDiscussionActiviteSupprimee(ev);
   saveState();
   closeModal();
   closeEventDetail();
@@ -9703,6 +9708,20 @@ async function deleteEventConfirm(id) {
 function _prevenirSuppressionActivite(ev) {
   if (!ev) return 0;
   return _destinatairesActivite(ev).length;
+}
+
+// Le miroir local de la discussion d'une activité SUPPRIMÉE (voir `deleteEventConfirm`).
+function _retirerDiscussionActiviteSupprimee(ev) {
+  if (!ev || !ev.id || typeof getConversations !== "function") return;
+  try {
+    const ids = [ev.convId, "evgrp_" + ev.id].filter(Boolean);
+    ids.forEach(function (c) { if (typeof convTombAdd === "function") convTombAdd("conv", c); });
+    if (!getConversations().some(c => c && ids.includes(c.id))) return;
+    conversationsState = getConversations().filter(c => !(c && ids.includes(c.id)));
+    if (typeof saveConversationsNow === "function") saveConversationsNow(); else saveConversations();
+    if (ids.includes(window._openedConvId) && typeof closeConversation === "function") { try { closeConversation(); } catch (e) {} }
+    try { if (typeof renderMessages === "function") renderMessages(); } catch (e) {}
+  } catch (e) { try { if (typeof diagLog === "function") diagLog("suppression activité : discussion " + (e && e.message)); } catch (_) {} }
 }
 
 // Message groupé aux inscrits (annonce de dernière minute, changement de lieu…).
