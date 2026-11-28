@@ -252,11 +252,18 @@
     boot();
   }
   window.addEventListener("passio:app-ready", function () { essais = 0; boot(); });
+  // Coupure ou levée distante en cours de session (2026-11-27) : un tour plus
+  // tard qu'UI-4A5, avant UI-4A3 (qui diffère de deux) — le déclencheur doit
+  // quitter le commutateur avant que la barre ne soit retirée.
+  window.addEventListener("passio:coupures", function () {
+    setTimeout(function () { try { apply(); } catch (e) { fail("coupures", e); } }, 0);
+  });
 
   // Surface publique unique (aucun global top-level : `audit:globals` reste vert).
   window.PassioUIV4A4 = {
     isEnabled: actif,
     apply: apply,
     decorate: appliquer,
+    rendre: rendreDeclencheur,
   };
 })();

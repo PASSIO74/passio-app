@@ -276,6 +276,12 @@
 
   function retirerBarre() {
     var b = barre();
+    // Le déclencheur « Filtre » d'UI-4A4 vit DANS la barre : la retirer
+    // l'emportait, et l'écran restait sans accès aux filtres (2026-11-27). On le
+    // rend d'abord à sa place d'origine.
+    try {
+      if (b && b.querySelector("#irlToolsBtn") && window.PassioUIV4A4 && typeof PassioUIV4A4.rendre === "function") PassioUIV4A4.rendre();
+    } catch (e) {}
     if (b && b.parentNode) b.parentNode.removeChild(b);
   }
 
@@ -292,8 +298,11 @@
 
   // ══════════════════════════════════════════════════════════════════════════
   // CHOIX D'UNE VUE
-  // L'état vit EN MÉMOIRE et rien n'est écrit : revenir sur l'écran redonne la
-  // vue Liste, celle que la direction veut par défaut. Seule exception assumée,
+  // L'état vit EN MÉMOIRE et rien n'est écrit : un RECHARGEMENT redonne la vue
+  // Liste, celle que la direction veut par défaut. Dans la session, la vue
+  // choisie survit à un détour par un autre écran — continuité assumée
+  // (constat du 2026-11-27 : ce commentaire promettait l'inverse ; la limite
+  // « Voir plus » de la liste suit la même règle). Seule exception assumée,
   // et elle n'est pas la nôtre : `toggleIrlMapPeek` mémorise, lui, l'état
   // replié de la carte — c'est sa clé, sa décision, on ne la lui prend pas.
   // ══════════════════════════════════════════════════════════════════════════
@@ -418,6 +427,12 @@
       if (on && !barre() && essais++ < 80) setTimeout(boot, 150);
     } catch (e) { fail("boot", e); }
   }
+
+  // Coupure ou levée distante en cours de session (2026-11-27) : DERNIER des
+  // trois lots (deux tours plus tard), une fois UI-4A5 et UI-4A4 rentrés.
+  window.addEventListener("passio:coupures", function () {
+    setTimeout(function () { setTimeout(function () { try { apply(); } catch (e) { fail("coupures", e); } }, 0); }, 0);
+  });
 
   // Surface publique unique (aucun global top-level : `audit:globals` reste vert).
   window.PassioUIV4A3 = {

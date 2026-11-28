@@ -4748,6 +4748,21 @@ function goTo(screen) {
   // c'est sans danger pour `ouvrirGestionPassions`, qui fait `goTo` PUIS
   // `openPassionManager` — dans cet ordre.
   try { if (typeof closePassionManager === "function") closePassionManager(); } catch (e) {}
+  // ⚠️ LA CARTE PLEIN ÉCRAN DE « RENCONTRER » AUSSI (2026-11-27). Une porte
+  // extérieure (notification, lien) changeait d'écran carte agrandie : la classe
+  // restait posée, et au retour sur Rencontrer la carte recouvrait tout sans
+  // entrée d'historique — le geste de retour quittait l'écran au lieu de la
+  // fermer. Pas de `history.back()` ici : l'entrée d'écran qu'on vient de poser
+  // est au sommet, l'entrée « #carte » est derrière nous.
+  if (screen !== "irl") {
+    try {
+      var _carteIrl = document.getElementById("irlMapWrap");
+      if (_carteIrl && _carteIrl.classList.contains("fullscreen")) {
+        _carteIrl.classList.remove("fullscreen");
+        if (typeof majBoutonPleinEcranCarte === "function") majBoutonPleinEcranCarte();
+      }
+    } catch (e) {}
+  }
   // ⚠️ LES DEUX PAGES DE DÉTAIL AUSSI, ET POUR LA MÊME RAISON (2026-09-18).
   // Vidéo d'une testeuse iPhone : la page détail d'une publication ouverte,
   // elle tape « Messages », « Rencontrer », « Découvrir » — l'onglet s'allume,

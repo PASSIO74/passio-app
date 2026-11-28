@@ -143,18 +143,28 @@
     if (!Array.isArray(posees)) posees = [];
     posees = posees.filter(function (k) { return COUPURES_AUTORISEES.indexOf(k) !== -1; });
     var garder = [];
+    var changees = [];
     for (var i = 0; i < posees.length; i++) {
       var k = posees[i];
       if (voulues.indexOf(k) !== -1) { garder.push(k); continue; }
-      if (lire(k) === "0") retirer(k);
+      if (lire(k) === "0") { retirer(k); changees.push(k); }
     }
     for (var j = 0; j < voulues.length; j++) {
       var c = voulues[j];
       if (COUPURES_AUTORISEES.indexOf(c) === -1 || garder.indexOf(c) !== -1) continue;
       if (lire(c) === "0") continue; // déjà coupé par l'appareil lui-même : pas à nous
-      if (ecrire(c, "0")) garder.push(c);
+      if (ecrire(c, "0")) { garder.push(c); changees.push(c); }
     }
     if (garder.length) ecrire(CLE_POSEES, JSON.stringify(garder)); else retirer(CLE_POSEES);
+    // ⚠️ UNE COUPURE EN COURS DE SESSION SE DIT (2026-11-27). Chaque lot relit
+    // son drapeau à l'usage, mais rien ne rejouait sa `apply()` : sous
+    // `passio_ui_4a5` coupé, « Filtre » ouvrait le dialogue historique avec un
+    // onglet Date VIDE (le calendrier restait dans le panneau caché du lot) ;
+    // sous `passio_ui_4a3`, « Liste » devenait inerte. Les lots écoutent
+    // `passio:coupures` et se déposent (ou se reposent) proprement.
+    if (changees.length) {
+      try { window.dispatchEvent(new CustomEvent("passio:coupures", { detail: { cles: changees } })); } catch (e) {}
+    }
   }
 
   // ── Bandeau ───────────────────────────────────────────────────────────────

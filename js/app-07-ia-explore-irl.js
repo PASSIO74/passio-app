@@ -1484,6 +1484,26 @@ const FRANCE_CITIES = {
   "amman":          [31.9454, 35.9284],
 };
 
+// ⚠️ UN QUARTIER N'EST PAS UNE VILLE (2026-11-27). Le dictionnaire sert aussi à
+// placer une activité dont la ville est « Alfama » ou « Mitte » (`cityToLatLng`,
+// où ces clés restent utiles) ; mais le SÉLECTEUR de ville les proposait comme
+// des villes de référence (« Côte De Granit Rose », « Souks »), et
+// `getClosestCity` nommait « Alfama » la position d'une personne à Lisbonne.
+// Ces clés-ci (quartiers, sites, monuments, régions) sont exclues des deux.
+const IRL_LIEUX_NON_COMMUNES = new Set([
+  "la défense", "la defense",
+  "alfama", "baixa", "bairro alto", "chiado", "belém", "belem", "lx factory",
+  "mitte", "kreuzberg", "friedrichshain", "prenzlauer", "prenzlauer berg",
+  "brandenburg", "brandenburger", "east side", "mauerpark",
+  "médina", "medina", "jemaa el-fna", "jemaa el fna", "majorelle", "jardin majorelle",
+  "souks", "atlas", "ourika", "vallée de l'ourika",
+  "shibuya", "shinjuku", "asakusa", "akihabara", "ginza", "harajuku", "ueno",
+  "fushimi", "fushimi inari", "arashiyama", "gion", "kinkaku-ji",
+  "cap fréhel", "cap frehel", "ploumanac'h", "ploumanach", "granit rose",
+  "côte de granit rose", "cote de granit rose", "pointe du raz",
+  "belle-île", "belle ile", "machu picchu",
+]);
+
 // ════════════════════════════════════════════════════════════════════════
 // GÉOCODAGE — 100 % GRATUIT, SANS CLÉ D'API (2026-07-21)
 // ════════════════════════════════════════════════════════════════════════
@@ -1594,10 +1614,16 @@ function _geoFromPhoton(f) {
 
 // Suggestions d'adresse/lieu. BAN d'abord (France, structuré, autorisé en
 // commercial), Photon en repli mondial.
-async function passioGeoSuggest(query, limit) {
+// `opts.communes` (2026-11-27) : le sélecteur de ville ne veut que des
+// COMMUNES. Sans `type=municipality`, la BAN renvoyait d'abord une rue dont le
+// nom contenait la saisie, et la « commune » proposée prenait les coordonnées
+// de cette rue. Clé de cache distincte : la même saisie, cherchée comme
+// adresse, garde ses réponses.
+async function passioGeoSuggest(query, limit, opts) {
   const q = String(query || "").trim();
   if (q.length < 3) return [];
-  const key = "s:" + q.toLowerCase() + ":" + (limit || 6);
+  const communes = !!(opts && opts.communes);
+  const key = "s:" + q.toLowerCase() + ":" + (limit || 6) + (communes ? ":c" : "");
   const hit = _geoCacheGet(key);
   if (hit !== undefined) return hit;
 
@@ -1609,7 +1635,7 @@ async function passioGeoSuggest(query, limit) {
   // géocodeur. Seule une vraie réponse (même vide) des fournisseurs se cache.
   let echec = false;
   const ban = await _geoThrottle(() => _geoFetchJson(
-    "https://api-adresse.data.gouv.fr/search/?limit=" + (limit || 6) + "&q=" + encodeURIComponent(q)));
+    "https://api-adresse.data.gouv.fr/search/?limit=" + (limit || 6) + (communes ? "&type=municipality" : "") + "&q=" + encodeURIComponent(q)));
   if (ban === null) echec = true;
   if (ban && ban.features && ban.features.length) out = ban.features.map(_geoFromBan);
 
@@ -1815,6 +1841,7 @@ function _irlCityList() {
   if (window._irlCityListCache) return window._irlCityListCache;
   const byCoord = {};
   Object.keys(FRANCE_CITIES).forEach(key => {
+    if (IRL_LIEUX_NON_COMMUNES.has(key)) return;
     const c = FRANCE_CITIES[key];
     const k = c[0].toFixed(3) + "," + c[1].toFixed(3);
     const prev = byCoord[k];
@@ -1847,6 +1874,7 @@ function getClosestCity(lat, lng) {
   let closestDistance = Infinity;
 
   for (const cityName in FRANCE_CITIES) {
+    if (IRL_LIEUX_NON_COMMUNES.has(cityName)) continue;
     const coords = FRANCE_CITIES[cityName];
     const dist = calculateDistance(lat, lng, coords[0], coords[1]);
     if (dist < closestDistance) {
@@ -2013,7 +2041,7 @@ function openIrlCitySelector() {
     const brut = searchInput.value.trim();
     remoteT = setTimeout(async () => {
       let res = [];
-      try { res = await passioGeoSuggest(brut, 6); } catch (e) { res = []; }
+      try { res = await passioGeoSuggest(brut, 6, { communes: true }); } catch (e) { res = []; }
       const box = document.getElementById("irlCityRemote");
       if (!box || searchInput.value.trim() !== brut) return;
       // On ne propose que des communes, et pas celles déjà listées localement.
@@ -2381,9 +2409,12 @@ function updateIrlMapMarkers() {
   // LOT-36 (audit UX/UI du 2026-11-10, IRL-C15) : six activités au même lieu
   // (une ville géocodée à sa mairie, un même local) donnaient six marqueurs
   // empilés, impossibles à toucher séparément — le micro-décalage ne les
-  // écartait que de quelques mètres. Les activités d'un même lieu (~100 m) sont
+  // écartait que de quelques mètres. Les activités d'un même point sont
   // regroupées en UNE pastille qui dit leur nombre ; sa bulle les liste toutes.
   // Zoomer n'aurait rien séparé : elles partagent le même point.
+  // ⚠️ « DANS CE SECTEUR », PAS « À CET ENDROIT » (2026-11-27) : la base arrondit
+  // les coordonnées à 0,01° (~1 km), deux lieux distants de 800 m y deviennent
+  // le même point — la pastille ne sait pas qu'ils sont au même endroit.
   const lieux = new Map();
   filtered.forEach(ev => {
     const ll = eventLatLng(ev);
@@ -2396,7 +2427,7 @@ function updateIrlMapMarkers() {
     if (evs.length > 1) {
       const icone = L.divIcon({
         className: "passio-marker-wrap",
-        html: `<div class="passio-marker passio-marker-groupe" aria-label="${evs.length} activités à cet endroit">${evs.length}</div>`,
+        html: `<div class="passio-marker passio-marker-groupe" aria-label="${evs.length} activités dans ce secteur">${evs.length}</div>`,
         iconSize: [40, 40],
         iconAnchor: [20, 20],
         popupAnchor: [0, -18],
@@ -2408,7 +2439,7 @@ function updateIrlMapMarkers() {
       const _exG = evs.map(ev => { try { return !!(window.PassioFirstRun && PassioFirstRun.masquerChiffresDemo(ev)); } catch (e) { return false; } });
       const _tousEx = _exG.every(Boolean);
       mg.bindPopup(`
-        <div class="irl-popup-title">${evs.length} ${_tousEx ? "exemples" : "activités"} à cet endroit</div>
+        <div class="irl-popup-title">${evs.length} ${_tousEx ? "exemples" : "activités"} dans ce secteur</div>
         <div class="irl-popup-liste">${evs.map((ev, i) => {
           const dd = fmtEventDate(ev.date);
           const pp = passionById(ev.passion) || { emoji: "📍", label: "" };
@@ -2422,7 +2453,8 @@ function updateIrlMapMarkers() {
       return;
     }
     const ev = evs[0];
-    // Micro-jitter DÉTERMINISTE basé sur l'id (minimal, évite le chevauchement sans décalage visible)
+    // Micro-jitter DÉTERMINISTE basé sur l'id (±0,001°, ~100 m) : bien en deçà de
+    // l'arrondi serveur à 0,01°, il ne fait qu'écarter deux marqueurs voisins.
     const h = String(ev.id || "").split("").reduce((s, c) => s + c.charCodeAt(0), 0);
     const lat = ll[0] + (((h * 13) % 100) / 50000 - 0.001);
     const lng = ll[1] + (((h * 23) % 100) / 50000 - 0.001);
@@ -2522,8 +2554,8 @@ function toggleIrlMapFullscreen() {
 // était l'icône d'entrée, sans libellé. Le bouton dit maintenant « Fermer la
 // carte » (texte visible, nom accessible) ; appelé par les chemins qui entrent
 // ou sortent du plein écran (bouton, retour, Échap — ces deux derniers passent
-// par `toggleIrlMapFullscreen`). Aucun changement d'écran ne sort du plein
-// écran (constat du 2026-11-27) : la carte y recouvre la navigation.
+// par `toggleIrlMapFullscreen`). Un changement d'écran par une porte extérieure
+// (notification, lien) sort du plein écran dans `goTo` (2026-11-27).
 function majBoutonPleinEcranCarte() {
   try {
     var wrap = document.getElementById("irlMapWrap");
@@ -3367,9 +3399,14 @@ function _eventDistanceKm(ev, ref) {
   return calculateDistance(r.lat, r.lng, loc[0], loc[1]);
 }
 
-function _fmtDistance(km) {
+// ⚠️ PAS DE MÈTRES POUR UNE ACTIVITÉ (2026-11-27). Le serveur arrondit lat/lng
+// à 0,01° (`aa_events_coordonnees`, vie privée) : une maille d'environ 1 km.
+// « 411 m » s'affichait à qui se tenait SUR le lieu réel. Sous le kilomètre on
+// dit « moins d'1 km » ; seul un appelant qui mesure deux points exacts passe
+// `exact` (le toast de pointage, qui compare au rayon d'accueil).
+function _fmtDistance(km, exact) {
   if (km == null) return "";
-  if (km < 1) return Math.round(km * 1000) + " m";
+  if (km < 1) return exact ? Math.round(km * 1000) + " m" : "moins d'1 km";
   if (km < 10) return km.toFixed(1).replace(".", ",") + " km";
   return Math.round(km) + " km";
 }
@@ -3444,14 +3481,9 @@ function closeIrlFiltersPanel() {
 
 function _updateIrlFiltersBtn() {
   var n = _irlActiveFilterCount();
-  var badge = document.getElementById("irlFiltersBadge");
   var clearBtn = document.getElementById("irlFiltersClearBtn");
-  var mainBtn = document.getElementById("irlFiltersBtn");
-  if (badge) { badge.textContent = n > 0 ? n : ""; badge.style.display = n > 0 ? "inline-block" : "none"; }
-  if (mainBtn) {
-    mainBtn.style.borderColor = n > 0 ? "var(--accent)" : "var(--border)";
-    mainBtn.style.color = n > 0 ? "var(--accent)" : "var(--muted)";
-  }
+  // #irlFiltersBadge et #irlFiltersBtn n'existent plus dans le balisage
+  // (remplacés par #irlToolsBtn) : leurs lectures sont retirées (2026-11-27).
   // Pastille du déclencheur « Outils » (panneau contextuel). Même compteur que
   // l'ancien bouton Filtres : nb total de filtres actifs.
   var tBadge = document.getElementById("irlToolsBadge");
@@ -4946,7 +4978,7 @@ function checkInEvent(id) {
     (pos) => {
       const dKm = calculateDistance(pos.coords.latitude, pos.coords.longitude, loc[0], loc[1]);
       if (dKm * 1000 > CHECKIN_RADIUS_M) {
-        toast("Tu sembles à " + _fmtDistance(dKm) + " du lieu — rapproche-toi pour pointer");
+        toast("Tu sembles à " + _fmtDistance(dKm, true) + " du lieu — rapproche-toi pour pointer");
         return;
       }
       done();
