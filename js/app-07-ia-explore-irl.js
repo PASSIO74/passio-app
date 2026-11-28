@@ -1945,6 +1945,51 @@ function _memoriserIrlVille(name, lat, lng) {
   } catch (e) { _diag("[IRL] villes récentes non mémorisées: " + (e && e.message)); }
 }
 
+// La VILLE DE RÉFÉRENCE choisie à la main survit à la session (2026-11-28,
+// sujet 123) : après un rechargement, « Où ? » revenait à « Choisir une
+// ville » et les distances disparaissaient. La position GPS, elle, n'est
+// JAMAIS écrite : elle se redemande. La clé est dans `ACCOUNT_SCOPED_KEYS`
+// (app-02, purgée à la déconnexion), et l'entrée porte son PROPRIÉTAIRE : un
+// changement de compte sans purge (retour OAuth, `onAuthStateChange`) ne fait
+// pas réapparaître la ville de l'autre compte.
+var IRL_VILLE_REF_KEY = "passio_irl_ville_reference_v1";
+
+function _irlVilleProprietaire() {
+  try { return (typeof _uidEstUnCompte === "function" && _uidEstUnCompte()) ? String(MY_UID) : "visiteur"; }
+  catch (e) { return "visiteur"; }
+}
+
+function _irlVilleEcrire(ville) {
+  try {
+    if (!ville) { localStorage.removeItem(IRL_VILLE_REF_KEY); return; }
+    var c = ville.coords;
+    if (!ville.name || !c || !isFinite(c[0]) || !isFinite(c[1])) return;
+    localStorage.setItem(IRL_VILLE_REF_KEY, JSON.stringify({
+      owner: _irlVilleProprietaire(), id: String(ville.id || "geo").slice(0, 40),
+      name: String(ville.name).slice(0, 80), lat: Number(c[0]), lng: Number(c[1]),
+    }));
+  } catch (e) { _diag("[IRL] ville de référence non mémorisée: " + (e && e.message)); }
+}
+
+// Rétablit la ville du compte COURANT, une fois par compte. Appelée en tête de
+// `renderIRL` et de `irlLieuReference` : le compte n'est pas encore connu au
+// chargement du script, il l'est au premier rendu (ou au suivant).
+function _irlVilleRestaurer() {
+  var moi = _irlVilleProprietaire();
+  if (window._irlVilleVuePour === moi) return;
+  var premier = window._irlVilleVuePour === undefined;
+  window._irlVilleVuePour = moi;
+  // Le compte a CHANGÉ dans la session : la ville de l'autre compte part.
+  if (!premier) irlSelectedCity = null;
+  if (irlSelectedCity) return;
+  try {
+    var v = JSON.parse(localStorage.getItem(IRL_VILLE_REF_KEY) || "null");
+    if (!v || v.owner !== moi || typeof v.name !== "string" || !v.name
+        || !isFinite(v.lat) || !isFinite(v.lng)) return;
+    irlSelectedCity = { id: String(v.id || "geo"), name: v.name, coords: [Number(v.lat), Number(v.lng)] };
+  } catch (e) { /* entrée illisible : on repart sans ville */ }
+}
+
 // Un tap sur une ville récente (sélecteur ou carte « Où ? » de la page Filtre).
 function choisirIrlVilleRecente(i) {
   var v = irlVillesRecentes()[i];
@@ -2090,6 +2135,7 @@ function openIrlCitySelector() {
 function selectIrlGeoCity(name, lat, lng) {
   irlSelectedCity = { id: "geo", name: name, coords: [lat, lng] };
   _memoriserIrlVille(name, lat, lng);
+  _irlVilleEcrire(irlSelectedCity);
   _diag("[IRL] 🏙️ Ville géocodée: " + name);
   updateIrlCityTitle();
   closeModal();
@@ -2105,6 +2151,7 @@ function selectIrlCity(cityId, cityName) {
     coords: FRANCE_CITIES[cityId]
   };
   if (irlSelectedCity.coords) _memoriserIrlVille(cityName, irlSelectedCity.coords[0], irlSelectedCity.coords[1]);
+  _irlVilleEcrire(irlSelectedCity);
   _diag("[IRL] 🏙️ Ville sélectionnée: " + cityName);
   updateIrlCityTitle();
   closeModal();
@@ -2132,6 +2179,7 @@ function useMyPositionForIrl() {
 // Revenir à ta position
 function clearIrlCitySelection() {
   irlSelectedCity = null;
+  _irlVilleEcrire(null);   // effacer la ville l'efface aussi du stockage (sujet 123)
   _diag("[IRL] 🗺️ Retour à ta position");
   updateIrlCityTitle();
   closeModal();
@@ -2217,6 +2265,7 @@ function initIrlMap() {
 // Revenir à la position GPS actuelle de l'utilisateur
 function resetToUserLocation() {
   irlSelectedCity = null;
+  _irlVilleEcrire(null);
   _diag("[IRL] 🗺️ Retour à ta position actuelle");
   updateIrlCityTitle();
   if (irlMap) irlMap.closePopup();
@@ -2662,7 +2711,9 @@ function renderIrlPassionTiles() {
   irlPassionFilters = saved;
 
   const counts = {};
-  pool.forEach(e => { if (e.passion) counts[e.passion] = (counts[e.passion] || 0) + 1; });
+  // Le RÉEL seulement (2026-11-28, sujet 112) : une tuile ne promet pas des
+  // activités qui ne sont que des exemples.
+  pool.forEach(e => { if (e.passion && !_irlEstExemple(e)) counts[e.passion] = (counts[e.passion] || 0) + 1; });
 
   const mine = _irlMyPassions();
   const mineSet = new Set(mine);
@@ -2789,18 +2840,26 @@ function irlCalNavMonth(delta) {
 // Jours (timestamp minuit) portant au moins un événement à venir.
 function _irlEventDaySet() {
   var set = {};
-  var now = Date.now();
+  // Les AUTRES filtres s'appliquent (2026-11-28, sujet 124) : une pastille
+  // promet qu'un tap sur ce jour montre une activité. Le filtre de date est
+  // suspendu le temps du calcul (sinon seuls les jours déjà choisis seraient
+  // pointés), comme `renderIrlPassionTiles` suspend celui de passion.
+  var savedDates = irlDateFilters;
   try {
-    allEvents().forEach(function (e) {
+    irlDateFilters = new Set();
+    _filterIrlEvents(allEvents()).forEach(function (e) {
       var ts = e && e.date;              // même champ que le filtre de date
       if (!ts) return;
       // Seulement ce que la liste montrerait (2026-11-27) : un jour dont la
-      // seule activité est annulée, ou déjà finie, portait une pastille.
-      if (_eventIsCancelled(e) || !_irlDansPeriode(e, now)) return;
+      // seule activité est annulée, ou déjà finie, portait une pastille. Et
+      // seulement le RÉEL (2026-11-28, sujet 112) : 15 jours pointés pour
+      // 15 jours d'exemples.
+      if (_eventIsCancelled(e) || _irlEstExemple(e)) return;
       var d = new Date(ts);
       set[new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()] = 1;
     });
   } catch (err) { /* pas d'événements = pas de pastilles */ }
+  finally { irlDateFilters = savedDates; }
   return set;
 }
 
@@ -2861,6 +2920,19 @@ function _renderIrlInlineCal() {
 function irlCalPick(ts) {
   if (!irlDateFilters) irlDateFilters = new Set();
   var start = irlCustomDate ? _startOfDayTs(irlCustomDate.start) : null;
+  var fin = irlCustomDate ? _startOfDayTs(irlCustomDate.end) : null;
+  // Retoucher une borne de la période choisie la DÉSÉLECTIONNE (2026-11-28,
+  // sujet 124) — et elle seule : les cases « Aujourd'hui », « Cette semaine »…
+  // restent. Avant, retoucher le jour choisi le re-sélectionnait, et la seule
+  // sortie était le ✕, qui efface TOUTES les dates.
+  if (irlDateFilters.has("custom") && start != null && (ts === start || ts === fin)) {
+    irlDateFilters.delete("custom");
+    irlCustomDate = null;
+    window._irlCalPending = false;
+    renderIRL();
+    _renderIrlInlineCal();
+    return;
+  }
   if (window._irlCalPending && start != null && ts > start) {
     irlCustomDate = { start: start, end: _endOfDayTs(ts) };
     window._irlCalPending = false;
@@ -3028,6 +3100,7 @@ function setIrlPassionsMiennes() {
 // ⚠️ Aucun de ces libellés ne part en télémétrie : la position précise de
 // l'utilisateur n'est jamais mesurée (cf. `js/telemetry.js`).
 function irlLieuReference() {
+  _irlVilleRestaurer();
   if (irlSelectedCity) return { nom: irlSelectedCity.name, sub: "Ville choisie" };
   // LOT-25 (IRL-C04) : après un REFUS, le point est le repli Paris — jamais
   // « Position actuelle », que l'écran affichait pour un point qu'il n'a pas.
@@ -3064,13 +3137,23 @@ function irlDateResumeTexte() {
 function _syncIrlFiltersFooter(count) {
   var done = document.getElementById("irlFiltersDoneBtn");
   var reset = document.getElementById("irlFiltersResetBtn");
-  var n = (typeof count === "number") ? count : null;
-  // ⚠️ POINT UNIQUE DE COMPTAGE. Le pied « Afficher N résultats » de la page
+  // La LISTE filtrée (2026-11-28, sujet 112) : le nombre publié est celui des
+  // activités RÉELLES, les exemples sont comptés à part. Un nombre seul reste
+  // accepté (aucun exemple connu).
+  var ex = 0, n = null;
+  if (Array.isArray(count)) {
+    count.forEach(function (e) { if (_irlEstExemple(e)) ex++; });
+    n = count.length - ex;
+  } else if (typeof count === "number") n = count;
+  //⚠️ POINT UNIQUE DE COMPTAGE. Le pied « Afficher N résultats » de la page
   // Filtre (UI-4A5) LIT ce nombre au lieu de refiltrer de son côté : un second
   // comptage divergerait le jour où `_filterIrlEvents` changerait, et personne
   // ne le verrait — les deux nombres restant plausibles.
   window._irlResultCount = n;
-  if (done) {
+  window._irlResultExemples = ex;
+  var avecExemples = irlTexteCompteExemples("Voir");
+  if (done && avecExemples) done.textContent = avecExemples;
+  else if (done) {
     done.textContent = n === null ? "Voir les activités"
       : n === 0 ? "Aucun résultat"
       : n === 1 ? "Voir 1 activité"
@@ -3352,13 +3435,32 @@ function _filterIrlEvents(events) {
 // ailleurs en France, alors que 7 vraies activités attendaient à Lyon. Tri
 // STABLE : l'ordre choisi (imminent, proche, populaire) tient dans chaque groupe.
 function _reelsAvantExemples(list) {
-  var estExemple = function (e) {
-    try { return !!(window.PassioFirstRun && typeof PassioFirstRun.evenementDemo === "function" && PassioFirstRun.evenementDemo(e)); }
-    catch (x) { return false; }
-  };
   var reels = [], exemples = [];
-  (list || []).forEach(function (e) { (estExemple(e) ? exemples : reels).push(e); });
+  (list || []).forEach(function (e) { (_irlEstExemple(e) ? exemples : reels).push(e); });
   return reels.concat(exemples);
+}
+
+// Le discriminant d'une activité d'EXEMPLE, en un seul point (2026-11-28,
+// sujet 112) : `PassioFirstRun.evenementDemo` (identifiant court « e<N> » du
+// seed), le même que celui du tri ci-dessus. Les COMPTEURS de l'écran (pied
+// « Afficher N résultats », tuiles de passions, pastilles du calendrier) ne
+// comptent que le RÉEL : 35 « résultats » annoncés pour 35 exemples faisaient
+// croire à une ville animée qui n'existait pas.
+function _irlEstExemple(e) {
+  try { return !!(window.PassioFirstRun && typeof PassioFirstRun.evenementDemo === "function" && PassioFirstRun.evenementDemo(e)); }
+  catch (x) { return false; }
+}
+
+// Le libellé du compteur quand des EXEMPLES sont affichés (null sinon : chaque
+// pied garde alors son texte). Les exemples s'ajoutent À PART, jamais dans le
+// nombre : « 3 activités · 2 exemples », ou, sans aucune activité réelle,
+// « Aucune activité près de toi pour l'instant · 4 exemples ».
+function irlTexteCompteExemples(verbe) {
+  var n = window._irlResultCount, ex = window._irlResultExemples;
+  if (typeof n !== "number" || !(ex > 0)) return null;
+  var exTxt = ex + (ex === 1 ? " exemple" : " exemples");
+  if (n === 0) return "Aucune activité près de toi pour l'instant · " + exTxt;
+  return (verbe ? verbe + " " : "") + n + (n === 1 ? " activité" : " activités") + " · " + exTxt;
 }
 
 // Tri de la liste : imminent (défaut) / le plus proche / le plus populaire.
@@ -3468,7 +3570,7 @@ function openIrlFiltersPanel() {
   _syncIrlDistanceUI();
   _syncIrlTimeUI();
   _renderIrlInlineCal();
-  _syncIrlFiltersFooter(_filterIrlEvents(allEvents()).length);
+  _syncIrlFiltersFooter(_filterIrlEvents(allEvents()));
 }
 
 function closeIrlFiltersPanel() {
@@ -3686,6 +3788,8 @@ function renderIRL() {
   if (_prochaineSortieAccueil && (_prochaineSortieAccueil.compte !== MY_UID || _prochaineSortieAccueil.etat !== state)) {
     actualiserProchaineSortie();
   }
+  // La ville de référence mémorisée du compte courant (sujet 123).
+  _irlVilleRestaurer();
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
   updateIrlCityTitle();
 
@@ -3744,7 +3848,7 @@ function renderIRL() {
   _syncIrlFilterTabs();
   _syncIrlDistanceUI();
   _syncIrlTimeUI();
-  _syncIrlFiltersFooter(filtered.length);
+  _syncIrlFiltersFooter(filtered);
 
   // Sync filter buttons (Mes events / Inscrit) - multi-select
   document.querySelectorAll("[data-irlfilter]").forEach(function(btn) {

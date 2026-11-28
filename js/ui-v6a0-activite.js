@@ -204,11 +204,16 @@
     apres(grille("evCity"));
     apres(grille("evMax"));
 
-    // ⑤ Plus d'options : récurrence, contact, lien (déplacés, rien n'est retiré)
+    // ⑤ Plus d'options : récurrence, contact, lien (déplacés, rien n'est retiré).
+    // DÉPLIÉS d'office (Benjamin, 2026-11-28 : « qu'on n'ait pas besoin de
+    // cliquer ») : le <details> naît ouvert et son titre ne replie plus rien.
     var options = document.createElement("details");
     options.className = "v6a0-options";
+    options.open = true;
     var resume = document.createElement("summary");
     resume.textContent = "Plus d'options";
+    resume.tabIndex = -1;
+    resume.addEventListener("click", function (e) { e.preventDefault(); });
     options.appendChild(resume);
     [grille("evRecurrence"), champ("evContact"), champ("evLink")].forEach(function (n) { if (n) options.appendChild(n); });
     apres(options);

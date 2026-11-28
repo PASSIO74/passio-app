@@ -52,12 +52,29 @@ async function ouvrirFiltres(page) {
 }
 
 // Le nombre annoncé par le pied, tel qu'il est ÉCRIT — c'est ce que l'œil lit.
+// 2026-11-28 (dossier ECR, sujet 112) : les tuiles ne comptent plus que les
+// activités RÉELLES — le décor n'est fait que d'exemples. Une vraie activité
+// sur la passion de la première tuile rend au compteur de quoi s'écrire.
+function ajouterReelle(page) {
+  return page.evaluate(() => {
+    const p = document.querySelector("[data-irlpassion]").getAttribute("data-irlpassion");
+    state.seed.events = state.seed.events.concat([{ id: "reelle_v4a5", title: "Vraie activité", passion: p,
+      emoji: "🎸", city: "Lyon", lat: 45.76, lng: 4.83, date: Date.now() + 2 * 86400000, time: "18:00",
+      desc: "", attendees: [], maybes: [], waitlist: [], checkedIn: [], organizerId: "quelqu_un", status: "active" }]);
+    renderIRL();
+  });
+}
+
 function nombreAffiche(page) {
   return page.evaluate(() => {
+    // 2026-11-28 (dossier ECR, sujet 112) : le pied compte le réel et ajoute
+    // les exemples À PART (« 3 activités · 2 exemples », « Aucune activité près
+    // de toi pour l'instant · 35 exemples ») — le nombre de cartes de la liste
+    // est la somme des deux.
     const t = document.getElementById("v4a5Done").textContent;
-    if (/Aucun/.test(t)) return 0;
-    const m = t.match(/(\d+)/);
-    return m ? Number(m[1]) : null;
+    const ns = t.match(/\d+/g);
+    if (!ns) return /Aucun/.test(t) ? 0 : null;
+    return ns.reduce((a, n) => a + Number(n), 0);
   });
 }
 
@@ -304,6 +321,7 @@ test.describe("UI-4A5 — « Filtre », troisième vue de Rencontrer", () => {
     // ⚠️ AUCUN NUMÉRO SUR LES PASSIONS (demande du 2026-09-04). Le compteur est
     // MASQUÉ, jamais retiré : le moteur continue de l'écrire, et le kill switch
     // le rend — c'est là qu'il garde son sens.
+    await ajouterReelle(page);
     expect(await page.locator("#v4a5Passions .msg-tile-badge").count(),
       "le moteur doit toujours écrire le compteur").toBeGreaterThan(0);
     const badgesVus = await page.$$eval("#v4a5Passions .msg-tile-badge",
@@ -479,7 +497,7 @@ test.describe("UI-4A5 — « Filtre », troisième vue de Rencontrer", () => {
     expect(haut.visible).toBe(true);
     expect(haut.hauteur, "cible tactile du bouton principal").toBeGreaterThanOrEqual(44);
     expect(haut.bas, "le bouton passe sous la barre d'onglets").toBeLessThanOrEqual(haut.hautDeLaNav);
-    expect(haut.texte).toMatch(/^Afficher \d+ résultats?$|^Aucun résultat$/);
+    expect(haut.texte).toMatch(/^Afficher \d+ résultats?$|^Aucun résultat$|^Afficher \d+ activités? · \d+ exemples?$|^Aucune activité près de toi pour l'instant · \d+ exemples?$/);
 
     // Toute la page se parcourt, et le bouton ne bouge pas d'un pixel.
     await page.evaluate(() => { document.getElementById("appMain").scrollTop = 99999; });
@@ -674,6 +692,7 @@ test.describe("UI-4A5 — « Filtre », troisième vue de Rencontrer", () => {
     await expect(page.locator("#irlFiltersPanel #irlPaneDate")).toHaveCount(1);
     // Le compteur d'activités des bulles redevient VISIBLE : il n'était que
     // masqué, et c'est là qu'il garde son sens.
+    await ajouterReelle(page);
     expect(await page.$$eval(".msg-tile-badge",
       (ns) => ns.filter((n) => n.offsetParent !== null).length)).toBeGreaterThan(0);
 

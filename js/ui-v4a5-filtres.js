@@ -541,7 +541,13 @@
     var reset = el(RESET_ID);
     if (!done) return;
     var n = window._irlResultCount;
-    var txt = (typeof n !== "number") ? "Afficher les résultats"
+    // Les exemples sont comptés À PART (2026-11-28, sujet 112) : le nombre
+    // publié n'est que le réel, le libellé ajoute « · N exemples ».
+    var ex = window._irlResultExemples > 0 ? window._irlResultExemples : 0;
+    var avecEx = null;
+    try { if (typeof irlTexteCompteExemples === "function") avecEx = irlTexteCompteExemples("Afficher"); } catch (e) {}
+    var txt = avecEx ? avecEx
+      : (typeof n !== "number") ? "Afficher les résultats"
       : n === 0 ? "Aucun résultat"
       : n === 1 ? "Afficher 1 résultat"
       : "Afficher " + n + " résultats";
@@ -551,12 +557,12 @@
     if (sig === sigPied) return;
     sigPied = sig;
     done.textContent = txt;
-    done.disabled = (n === 0);
+    done.disabled = (n === 0 && !ex);
     if (reset) {
       reset.disabled = off;
       reset.hidden = off;
     }
-    piedSansResultat(n === 0 && !off);
+    piedSansResultat(n === 0 && !ex && !off);
   }
 
   // LOT-25 (audit UX/UI du 2026-11-10, IRL-C05) : des choix sans résultat
